@@ -1,4 +1,4 @@
-337abd973b40f6c0f35ba0b669416f8a  ./xbian-package-kernel/boot/kernel.img
+c590bbabe8c525336932d5ab3c8f10b8  ./xbian-package-kernel/boot/kernel.img
 ad9af0f8b64bdb2672da1e01075a5021  ./xbian-package-kernel/lib/modules/3.8.12-1+/modules.ccwmap
 577498f1d1f637bb83867e8e19dd0a74  ./xbian-package-kernel/lib/modules/3.8.12-1+/modules.usbmap
 4b7565a57129899bc6adc1d6d5c83d17  ./xbian-package-kernel/lib/modules/3.8.12-1+/modules.pcimap
