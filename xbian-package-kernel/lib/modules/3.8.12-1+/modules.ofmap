@@ -1,3 +1,0 @@
-# of module          name                 type                 compatible
-bmp085-spi           *                    *                    bosch,bmp085
-w1-gpio              *                    *                    w1-gpio

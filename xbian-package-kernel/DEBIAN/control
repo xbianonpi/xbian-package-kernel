@@ -1,13 +1,14 @@
 Origin: XBian
 Package: xbian-package-kernel
-Version: 1.0
+Version: 1.1
 Section: kernel
 Essential: No
 Priority: optional
 Codename: wheezy
 Architecture: armhf
 Installed-Size: 69910
-Replaces: xbian-package-kernel
+Replaces: xbian-package-kernel-3.8.12
+Conflicts: xbian-package-kernel-3.8.12
 Depends: xbian-package-firmware (>=1.4), xbian-package-initramfs-tools (>=1.0), xbian-package-splash (>=1.0)
 Maintainer: Koenkk <development@xbian.org>
-Description: Kernel 3.8.12-1 for the Raspberry Pi.
+Description: Kernel 3.8.12-2 for the Raspberry Pi.
