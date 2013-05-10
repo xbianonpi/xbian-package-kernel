@@ -1,0 +1,4 @@
+# of module          name                 type                 compatible
+bmp085-spi           *                    *                    bosch,bmp085
+spidev               *                    *                    rohm,dh2228fv
+w1-gpio              *                    *                    w1-gpio
