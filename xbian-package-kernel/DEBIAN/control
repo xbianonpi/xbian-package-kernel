@@ -7,8 +7,8 @@ Priority: optional
 Codename: wheezy
 Architecture: armhf
 Installed-Size: 69910
-Replaces: xbian-package-kernel-3.8.12, xbian-package-kernel-3.6.11
-Conflicts: xbian-package-kernel-3.8.12, xbian-package-kernel-3.6.11
+Replaces: xbian-package-kernel3.6.11
+Conflicts: xbian-package-kernel3.6.11
 Depends: xbian-package-firmware (>=1.4), xbian-package-initramfs-tools (>=1.0), xbian-package-splash (>=1.0)
 Maintainer: Koenkk <development@xbian.org>
 Description: XBian kernel for the Raspberry Pi.
