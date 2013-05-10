@@ -95,6 +95,7 @@ kernel/drivers/video/syscopyarea.ko
 kernel/drivers/video/sysimgblt.ko
 kernel/drivers/video/fb_sys_fops.ko
 kernel/drivers/video/udlfb.ko
+kernel/drivers/char/frandom.ko
 kernel/drivers/base/regmap/regmap-i2c.ko
 kernel/drivers/base/regmap/regmap-spi.ko
 kernel/drivers/block/loop.ko
@@ -796,6 +797,16 @@ kernel/drivers/hid/hid-zydacron.ko
 kernel/drivers/hid/hid-wacom.ko
 kernel/drivers/hid/hid-waltop.ko
 kernel/drivers/hid/hid-wiimote.ko
+kernel/drivers/staging/media/lirc/lirc_bt829.ko
+kernel/drivers/staging/media/lirc/lirc_igorplugusb.ko
+kernel/drivers/staging/media/lirc/lirc_imon.ko
+kernel/drivers/staging/media/lirc/lirc_rpi.ko
+kernel/drivers/staging/media/lirc/lirc_rp1.ko
+kernel/drivers/staging/media/lirc/lirc_xbox.ko
+kernel/drivers/staging/media/lirc/lirc_sasem.ko
+kernel/drivers/staging/media/lirc/lirc_serial.ko
+kernel/drivers/staging/media/lirc/lirc_sir.ko
+kernel/drivers/staging/media/lirc/lirc_zilog.ko
 kernel/drivers/staging/winbond/w35und.ko
 kernel/drivers/staging/wlan-ng/prism2_usb.ko
 kernel/drivers/staging/rtl8712/r8712u.ko
