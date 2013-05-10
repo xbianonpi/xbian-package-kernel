@@ -4,6 +4,6 @@ if [ $1 == "configure" ]; then
 
         test -e /etc/xbian-initramfs/update-initramfs.sh && /etc/xbian-initramfs/update-initramfs.sh "3.8.12-1+" > /dev/null 2>&1
         rm -f /boot/kernel.img.prev || true
-        umount /boot
+        mountpoint /boot && umount /boot
 
 fi
