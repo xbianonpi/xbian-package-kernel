@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if [ $1 == "configure" ]; then
+
+        /etc/xbian-initramfs/update-initramfs.sh "3.8.12-2+"
+
+fi
+
