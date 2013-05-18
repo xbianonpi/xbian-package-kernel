@@ -2,6 +2,6 @@
 
 if [ $1 == "configure" ]; then
 
-        xbian-update-initramfs "3.8.12-2+"
+        xbian-update-initramfs "3.8.13-2+"
 
 fi
