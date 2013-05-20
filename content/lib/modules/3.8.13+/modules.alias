@@ -5257,7 +5257,6 @@ alias dm-raid5 dm_raid
 alias dm-raid4 dm_raid
 alias dm-raid10 dm_raid
 alias dm-raid1 dm_raid
-alias platform:leds-gpio leds_gpio
 alias hid:b0003g*v000009DAp0000001A hid_a4tech
 alias hid:b0003g*v000009DAp0000000A hid_a4tech
 alias hid:b0003g*v000009DAp00000006 hid_a4tech
