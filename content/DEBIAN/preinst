@@ -3,7 +3,12 @@
 
 if [ $1 == "install" -o $1 == "upgrade" ]; then
 
-        mountpoint -q /boot || mount /boot 
-        mv /boot/kernel.img /boot/kernel.img.prev || true 
+    mountpoint -q /boot || mount /boot 
+
+	if [ -f "/boot/kernel3_8_13.img" ]; then
+        mv /boot/kernel3_8_13.img /boot/kernel3_8_13.img.xbian
+    fi
+
+	rm /boot/kernel3_8*.img
 
 fi

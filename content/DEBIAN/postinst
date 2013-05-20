@@ -2,6 +2,12 @@
 
 if [ $1 == "configure" ]; then
 
-        xbian-update-initramfs "3.8.13+"
+        cp /boot/kernel3_8_13.img /boot/kernel.img
+	depmod -a
+    	xbian-update-initramfs "3.8.13+"
+
+	if [ -f "/boot/kernel3_8_13.img.xbian" ]; then
+		rm /boot/kernel3_8_13.img.xbian
+	fi
 
 fi
