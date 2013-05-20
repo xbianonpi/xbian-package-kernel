@@ -2,6 +2,18 @@
 
 if [ $1 == "remove" ]; then
 
-	true
+	if [ -f "/boot/kernel.img" ]; then
+		if [[ $(md5sum /boot/kernel.img | awk '{print $1}') == "d3fa73c4f35f48a8128932bb7d9dc468" ]]; then
+			rm /boot/kernel.img
+		fi
+	fi
+
+	if [ -d /lib/modules/3.6.11+ ]; then
+		rm -r /lib/modules/3.6.11+
+	fi
+
+	if [ -d /lib/firmware ]; then
+		rm -r /lib/firmware
+	fi
 
 fi

@@ -2,12 +2,24 @@
 
 if [ $1 == "remove" ]; then
 
-	true
+	if [ -f /boot/kernel3_6_11.img ]; then
+		rm /boot/kernel3_6_11.img
+	fi
+
+	if [ -d /lib/modules/3.6.11+ ]; then
+		rm -r /lib/modules/3.6.11+
+	fi
+
+	if [ -d /lib/firmware ]; then
+		rm - /lib/firmware
+	fi
 
 fi
 
 if [ $1 == "upgrade" ]; then
 
-	true
+	if [ -f /boot/kernel3_6_11.img ]; then
+		rm /boot/kernel3_6_11.img
+	fi
 
 fi

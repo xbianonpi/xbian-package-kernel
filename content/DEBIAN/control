@@ -1,12 +1,12 @@
 Origin: XBian
-Package: xbian-package-kernel
-Version: 1.1
+Package: xbian-package-kernel3.6.11
+Version: 1.4
 Section: kernel
 Essential: No
 Priority: optional
+Codename: wheezy
 Architecture: armhf
-Installed-Size: 69910
-Replaces: xbian-package-kernel3.6.11
-Depends: xbian-package-initramfs-tools (>=1.0), xbian-package-firmware (>=1.4), xbian-package-splash (>=1.0)
+Installed-Size: 39480
+Depends: xbian-package-firmware (>=1.3), xbian-update (>=1.0-1)
 Maintainer: Koenkk <development@xbian.org>
-Description: XBian kernel for the Raspberry Pi.
+Description: Kernel 3.6.11 for the Raspberry Pi.
