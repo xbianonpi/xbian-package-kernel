@@ -8,7 +8,4 @@ if [ $1 == "install" -o $1 == "upgrade" ]; then
 		if [ -f "/boot/kernel3_8_13.img" ]; then
         	mv /boot/kernel3_8_13.img /boot/kernel3_8_13.img.xbian
    	fi
-
-	rm -f /boot/kernel3_8*.img
-
 fi
