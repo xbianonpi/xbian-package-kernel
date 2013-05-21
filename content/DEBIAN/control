@@ -9,4 +9,3 @@ Replaces: xbian-package-kernel3.6.11
 Depends: xbian-package-initramfs-tools (>=1.0), xbian-package-firmware (>=1.4), xbian-package-splash (>=1.0)
 Maintainer: Koenkk <development@xbian.org>
 Description: Latest XBian kernel for the Raspberry Pi.
-Installed-Size: 34204
