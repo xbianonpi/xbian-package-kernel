@@ -8,8 +8,6 @@ alias nls_iso8859-8 nls_cp1255
 alias iso9660 isofs
 alias devname:fuse fuse
 alias char-major-10-229 fuse
-alias devname:btrfs-control btrfs
-alias char-major-10-234 btrfs
 alias sha256 sha256_generic
 alias sha224 sha256_generic
 alias sha512 sha512_generic

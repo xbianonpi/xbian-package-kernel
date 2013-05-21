@@ -1,4 +1,5 @@
 kernel/fs/quota/quota_tree.ko
+kernel/fs/fat/msdos.ko
 kernel/fs/nls/nls_cp737.ko
 kernel/fs/nls/nls_cp775.ko
 kernel/fs/nls/nls_cp850.ko
@@ -59,7 +60,6 @@ kernel/fs/ocfs2/ocfs2_stack_o2cb.ko
 kernel/fs/ocfs2/dlmfs/ocfs2_dlmfs.ko
 kernel/fs/ocfs2/cluster/ocfs2_nodemanager.ko
 kernel/fs/ocfs2/dlm/ocfs2_dlm.ko
-kernel/fs/btrfs/btrfs.ko
 kernel/fs/gfs2/gfs2.ko
 kernel/crypto/seqiv.ko
 kernel/crypto/xcbc.ko
@@ -1130,7 +1130,6 @@ kernel/net/nfc/nfc.ko
 kernel/net/openvswitch/openvswitch.ko
 kernel/lib/crc-ccitt.ko
 kernel/lib/crc7.ko
-kernel/lib/zlib_deflate/zlib_deflate.ko
 kernel/lib/raid6/raid6_pq.ko
 kernel/lib/ts_kmp.ko
 kernel/lib/ts_bm.ko

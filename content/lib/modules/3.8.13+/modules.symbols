@@ -339,7 +339,6 @@ alias symbol:snd_seq_root snd
 alias symbol:v4l2_ctrl_cluster videodev
 alias symbol:dib7000m_attach dib7000m
 alias symbol:xt_rateest_put xt_RATEEST
-alias symbol:ulist_reinit btrfs
 alias symbol:dib0090_set_vga dib0090
 alias symbol:fl6_merge_options ipv6
 alias symbol:rt2800_efuse_detect rt2800lib
@@ -992,7 +991,6 @@ alias symbol:__ieee80211_create_tpt_led_trigger mac80211
 alias symbol:ieee80211_radiotap_iterator_next cfg80211
 alias symbol:atrtr_get_dev appletalk
 alias symbol:cfg80211_wext_siwmode cfg80211
-alias symbol:zlib_deflate zlib_deflate
 alias symbol:__cast5_encrypt cast5_generic
 alias symbol:em28xx_write_ac97 em28xx
 alias symbol:phy_start_interrupts libphy
@@ -1000,7 +998,6 @@ alias symbol:cfg80211_ch_switch_notify cfg80211
 alias symbol:dm_dispatch_request dm_mod
 alias symbol:em28xx_audio_analog_set em28xx
 alias symbol:dm_rh_get_state dm_region_hash
-alias symbol:ulist_free btrfs
 alias symbol:nf_conntrack_l4proto_register nf_conntrack
 alias symbol:CsrUint8Ser csr_helper
 alias symbol:hci_conn_switch_role bluetooth
@@ -1583,7 +1580,6 @@ alias symbol:btmrvl_remove_card btmrvl
 alias symbol:dm_rh_recovery_start dm_region_hash
 alias symbol:smscore_set_board_id smsmdtv
 alias symbol:o2hb_setup_callback ocfs2_nodemanager
-alias symbol:ulist_alloc btrfs
 alias symbol:cx2341x_ctrl_get_menu cx2341x
 alias symbol:hci_recv_stream_fragment bluetooth
 alias symbol:snd_ac97_get_short_name snd_ac97_codec
@@ -1614,7 +1610,6 @@ alias symbol:v4l2_prio_change videodev
 alias symbol:dvb_dmx_release dvb_core
 alias symbol:nf_ct_expect_find_get nf_conntrack
 alias symbol:ssb_bus_resume ssb
-alias symbol:ulist_next btrfs
 alias symbol:ip_set_get_ip6_port ip_set
 alias symbol:mddev_init md_mod
 alias symbol:btmrvl_process_event btmrvl
@@ -1656,7 +1651,6 @@ alias symbol:lc_destroy lru_cache
 alias symbol:em28xx_init_isoc em28xx
 alias symbol:ip6_frag_init ipv6
 alias symbol:md_new_event md_mod
-alias symbol:zlib_deflateEnd zlib_deflate
 alias symbol:vb2_plane_cookie videobuf2_core
 alias symbol:v4l2_ctrl_new_std_menu_items videodev
 alias symbol:snd_rawmidi_drain_output snd_rawmidi
@@ -1966,7 +1960,6 @@ alias symbol:gf128mul_init_64k_lle gf128mul
 alias symbol:o2hb_get_all_regions ocfs2_nodemanager
 alias symbol:p9_idpool_create 9pnet
 alias symbol:vb2_ioctl_streamon videobuf2_core
-alias symbol:zlib_deflate_workspacesize zlib_deflate
 alias symbol:dm_deferred_set_destroy dm_bio_prison
 alias symbol:irlap_open irda
 alias symbol:vb2_fop_write videobuf2_core
@@ -2000,7 +1993,6 @@ alias symbol:genphy_restart_aneg libphy
 alias symbol:ip6_datagram_send_ctl ipv6
 alias symbol:gf128mul_init_4k_bbe gf128mul
 alias symbol:snd_pcm_hw_constraint_pow2 snd_pcm
-alias symbol:zlib_deflateInit2 zlib_deflate
 alias symbol:ieee80211_ave_rssi mac80211
 alias symbol:xts_crypt xts
 alias symbol:cfg80211_michael_mic_failure cfg80211
@@ -2145,12 +2137,10 @@ alias symbol:snd_ac97_write_cache snd_ac97_codec
 alias symbol:dm_block_location dm_persistent_data
 alias symbol:snd_rawmidi_new snd_rawmidi
 alias symbol:stp_proto_register stp
-alias symbol:ulist_init btrfs
 alias symbol:hdlcdrv_register hdlcdrv
 alias symbol:rc_repeat rc_core
 alias symbol:irttp_data_request irda
 alias symbol:md_run md_mod
-alias symbol:ulist_fini btrfs
 alias symbol:dvb_usb_nec_rc_key_to_event dvb_usb
 alias symbol:snd_pcm_hw_param_first snd_pcm
 alias symbol:dm_rh_region_to_sector dm_region_hash
@@ -2270,7 +2260,6 @@ alias symbol:irias_delete_value irda
 alias symbol:ocfs2_dlm_unlock ocfs2_stackglue
 alias symbol:rt2x00mac_sw_scan_complete rt2x00lib
 alias symbol:o2net_unregister_handler_list ocfs2_nodemanager
-alias symbol:zlib_deflateReset zlib_deflate
 alias symbol:vb2_get_contig_userptr videobuf2_memops
 alias symbol:cfg80211_wext_giwrange cfg80211
 alias symbol:dib3000mc_pid_parse dib3000mc
@@ -2373,5 +2362,4 @@ alias symbol:i2400m_reset i2400m
 alias symbol:lro_flush_pkt inet_lro
 alias symbol:ip_set_get_byname ip_set
 alias symbol:xfrm6_find_1stfragopt ipv6
-alias symbol:ulist_add btrfs
 alias symbol:unregister_snap_client psnap
