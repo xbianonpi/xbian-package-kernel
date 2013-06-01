@@ -1,13 +1,18 @@
 #!/bin/bash
 
+KVER="3.8.13+"
+fpool="/boot/kernel3_8_13.img /boot/System3_8_13.map /boot/System.map-$KVER /boot/kernel.img-$KVER"
+
 if [ $1 == "configure" ]; then
 
-        cp /boot/kernel3_8_13.img /boot/kernel.img
-	depmod -a
-    	xbian-update-initramfs "3.8.13+"
+        mv /boot/kernel.img-$KVER /boot/kernel.img
+        cp /boot/System.map-$KVER /boot/System.map
+        depmod -a $KVER
+        xbian-update-initramfs "$KVER"
 
-	if [ -f "/boot/kernel3_8_13.img.xbian" ]; then
-		rm /boot/kernel3_8_13.img.xbian
-	fi
+        for f in $fpool; do
+                { [ -f $f.xbian ] && rm $f.xbian; } || true
+        done
 
+        [ -d /lib/modules/3.8.13+.xbian ] && rm -fr /lib/modules/3.8.13+.xbian || true
 fi
