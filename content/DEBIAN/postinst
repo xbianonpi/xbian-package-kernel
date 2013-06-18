@@ -14,5 +14,4 @@ if [ $1 == "configure" ]; then
                 { [ -f $f.xbian ] && rm $f.xbian; } || true
         done
 
-        [ -d /lib/modules/3.8.13+.xbian ] && rm -fr /lib/modules/3.8.13+.xbian || true
 fi
