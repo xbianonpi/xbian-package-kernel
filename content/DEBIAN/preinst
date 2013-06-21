@@ -5,7 +5,7 @@ fpool="/boot/kernel3_8_13.img /boot/System3_8_13.map /boot/System.map-$KVER /boo
 
 if [ $1 == "install" -o $1 == "upgrade" ]; then
 
-	mountpoint -q /boot || mount /boot 
+	mountpoint -q /boot || { mount /boot || exit 1; } 
 
 	for f in $fpool; do
 		{ [ -f $f ] && mv $f $f.xbian; } || true
