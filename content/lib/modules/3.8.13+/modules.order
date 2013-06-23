@@ -1,5 +1,6 @@
 kernel/arch/arm/crypto/aes-arm.ko
 kernel/arch/arm/crypto/sha1-arm.ko
+kernel/kernel/configs.ko
 kernel/fs/nfs_common/nfs_acl.ko
 kernel/fs/quota/quota_tree.ko
 kernel/fs/nls/nls_cp737.ko
@@ -113,10 +114,12 @@ kernel/crypto/vmac.ko
 kernel/crypto/xcbc.ko
 kernel/crypto/crypto_null.ko
 kernel/crypto/md4.ko
+kernel/crypto/md5.ko
 kernel/crypto/rmd128.ko
 kernel/crypto/rmd160.ko
 kernel/crypto/rmd256.ko
 kernel/crypto/rmd320.ko
+kernel/crypto/sha1_generic.ko
 kernel/crypto/sha256_generic.ko
 kernel/crypto/sha512_generic.ko
 kernel/crypto/wp512.ko
@@ -150,13 +153,14 @@ kernel/crypto/salsa20_generic.ko
 kernel/crypto/deflate.ko
 kernel/crypto/zlib.ko
 kernel/crypto/michael_mic.ko
+kernel/crypto/crc32c.ko
 kernel/crypto/authenc.ko
 kernel/crypto/authencesn.ko
+kernel/crypto/lzo.ko
 kernel/crypto/ansi_cprng.ko
 kernel/crypto/ghash-generic.ko
 kernel/crypto/af_alg.ko
 kernel/crypto/algif_hash.ko
-kernel/crypto/algif_skcipher.ko
 kernel/crypto/xor.ko
 kernel/crypto/async_tx/async_tx.ko
 kernel/crypto/async_tx/async_memcpy.ko
@@ -164,10 +168,6 @@ kernel/crypto/async_tx/async_xor.ko
 kernel/crypto/async_tx/async_pq.ko
 kernel/crypto/async_tx/async_raid6_recov.ko
 kernel/crypto/async_tx/raid6test.ko
-kernel/crypto/asymmetric_keys/asymmetric_keys.ko
-kernel/crypto/asymmetric_keys/public_key.ko
-kernel/crypto/asymmetric_keys/rsa.ko
-kernel/crypto/asymmetric_keys/x509_key_parser.ko
 kernel/drivers/gpio/gpio-generic.ko
 kernel/drivers/video/backlight/lcd.ko
 kernel/drivers/video/backlight/backlight.ko
@@ -1305,6 +1305,3 @@ kernel/lib/ts_kmp.ko
 kernel/lib/ts_bm.ko
 kernel/lib/ts_fsm.ko
 kernel/lib/lru_cache.ko
-kernel/lib/mpi/mpi.ko
-kernel/lib/asn1_decoder.ko
-kernel/lib/oid_registry.ko

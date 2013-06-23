@@ -1,5 +1,4 @@
 kernel/arch/arm/mach-bcm2708/dmaer_master.ko
-kernel/kernel/configs.ko
 kernel/fs/cachefiles/cachefiles.ko
 kernel/fs/exportfs/exportfs.ko
 kernel/fs/fscache/fscache.ko
@@ -16,12 +15,8 @@ kernel/crypto/eseqiv.ko
 kernel/crypto/crypto_hash.ko
 kernel/crypto/pcompress.ko
 kernel/crypto/cryptomgr.ko
-kernel/crypto/md5.ko
-kernel/crypto/sha1_generic.ko
 kernel/crypto/des_generic.ko
 kernel/crypto/aes_generic.ko
-kernel/crypto/crc32c.ko
-kernel/crypto/lzo.ko
 kernel/crypto/rng.ko
 kernel/crypto/krng.ko
 kernel/block/deadline-iosched.ko
