@@ -11,5 +11,4 @@ if [ $1 == "install" -o $1 == "upgrade" ]; then
 		{ [ -f $f ] && mv $f $f.xbian; } || true
 	done
 
-        [ -d /lib/modules/3.8.13+ ] && mv /lib/modules/3.8.13+ /lib/modules/3.8.13+.xbian || true
 fi
