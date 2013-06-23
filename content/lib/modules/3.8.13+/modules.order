@@ -1,5 +1,6 @@
 kernel/arch/arm/crypto/aes-arm.ko
 kernel/arch/arm/crypto/sha1-arm.ko
+kernel/arch/arm/mach-bcm2708/dmaer_master.ko
 kernel/kernel/configs.ko
 kernel/fs/nfs_common/nfs_acl.ko
 kernel/fs/quota/quota_tree.ko
@@ -153,7 +154,6 @@ kernel/crypto/salsa20_generic.ko
 kernel/crypto/deflate.ko
 kernel/crypto/zlib.ko
 kernel/crypto/michael_mic.ko
-kernel/crypto/crc32c.ko
 kernel/crypto/authenc.ko
 kernel/crypto/authencesn.ko
 kernel/crypto/lzo.ko
@@ -168,6 +168,8 @@ kernel/crypto/async_tx/async_xor.ko
 kernel/crypto/async_tx/async_pq.ko
 kernel/crypto/async_tx/async_raid6_recov.ko
 kernel/crypto/async_tx/raid6test.ko
+kernel/block/deadline-iosched.ko
+kernel/block/cfq-iosched.ko
 kernel/drivers/gpio/gpio-generic.ko
 kernel/drivers/video/backlight/lcd.ko
 kernel/drivers/video/backlight/backlight.ko
@@ -184,6 +186,10 @@ kernel/drivers/char/raw.ko
 kernel/drivers/char/tpm/tpm.ko
 kernel/drivers/char/tpm/tpm_i2c_infineon.ko
 kernel/drivers/char/tpm/tpm_atmel.ko
+kernel/drivers/gpu/drm/drm_kms_helper.ko
+kernel/drivers/gpu/drm/drm.ko
+kernel/drivers/gpu/drm/drm_usb.ko
+kernel/drivers/gpu/drm/udl/udl.ko
 kernel/drivers/base/regmap/regmap-i2c.ko
 kernel/drivers/base/regmap/regmap-spi.ko
 kernel/drivers/block/brd.ko
@@ -1023,7 +1029,6 @@ kernel/sound/usb/6fire/snd-usb-6fire.ko
 kernel/sound/ac97_bus.ko
 kernel/arch/arm/oprofile/oprofile.ko
 kernel/net/core/pktgen.ko
-kernel/net/core/netprio_cgroup.ko
 kernel/net/802/p8022.ko
 kernel/net/802/psnap.ko
 kernel/net/802/stp.ko
@@ -1065,7 +1070,6 @@ kernel/net/sched/cls_tcindex.ko
 kernel/net/sched/cls_rsvp6.ko
 kernel/net/sched/cls_basic.ko
 kernel/net/sched/cls_flow.ko
-kernel/net/sched/cls_cgroup.ko
 kernel/net/sched/em_cmp.ko
 kernel/net/sched/em_nbyte.ko
 kernel/net/sched/em_u32.ko
