@@ -7,7 +7,8 @@ Priority: optional
 Architecture: armhf
 Replaces: xbian-package-kernel3.6.11
 Suggests: xbian-package-kernel-headers
-Depends: xbian-package-initramfs-tools (>=1.0), xbian-package-firmware (>=1.5), xbian-package-splash (>=1.0)
+Pre-Depends: xbian-package-initramfs-tools (>=1.0-0.4)
+Depends: xbian-package-firmware (>=1.5), xbian-package-splash (>=1.0)
 Provides: linux-image, linux-firmware-image, linux-modules-3.9.7+
 Conflicts:  linux-firmware-image, linux-image, linux-modules-3.9.7+
 Maintainer: Koenkk <development@xbian.org>
