@@ -1,6 +1,6 @@
 Origin: XBian
 Package: xbian-package-kernel
-Version: 1.2
+Version: 1.2-1
 Section: kernel
 Essential: No
 Priority: optional
@@ -9,7 +9,7 @@ Replaces: xbian-package-kernel3.6.11
 Suggests: xbian-package-kernel-headers
 Pre-Depends: xbian-package-initramfs-tools (>=1.0-0.4)
 Depends: xbian-package-firmware (>=1.5), xbian-package-splash (>=1.0)
-Provides: linux-image, linux-firmware-image, linux-modules-3.9.7+
-Conflicts:  linux-firmware-image, linux-image, linux-modules-3.9.7+
+Provides: linux-image, linux-firmware-image, linux-modules-3.9.8+
+Conflicts:  linux-firmware-image, linux-image, linux-modules-3.9.8+
 Maintainer: Koenkk <development@xbian.org>
-Description: Latest XBian kernel for the Raspberry Pi (3.9.7)
+Description: Latest XBian kernel for the Raspberry Pi (3.9.8)
