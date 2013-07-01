@@ -5,4 +5,3 @@ if [ $1 == "remove" ]; then
 	true
 
 fi
-

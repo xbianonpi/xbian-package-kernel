@@ -1,14 +1,15 @@
 Origin: XBian
 Package: xbian-package-kernel
-Version: 1.1-0.3
+Version: 1.2-1
 Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
 Replaces: xbian-package-kernel3.6.11
 Suggests: xbian-package-kernel-headers
-Depends: xbian-package-initramfs-tools (>=1.0), xbian-package-firmware (>=1.4), xbian-package-splash (>=1.0)
-Provides: linux-image, linux-firmware-image, linux-modules-3.8.13+
-Conflicts:  linux-firmware-image, linux-image, linux-modules-3.8.13+
+Pre-Depends: xbian-package-initramfs-tools (>=1.0-0.5)
+Depends: xbian-package-firmware (>=1.4-0.1), xbian-package-splash (>=1.0)
+Provides: linux-image, linux-firmware-image, linux-modules-3.9.8+
+Conflicts:  linux-firmware-image, linux-image, linux-modules-3.9.8+
 Maintainer: Koenkk <development@xbian.org>
-Description: Latest XBian kernel for the Raspberry Pi (3.8.13)
+Description: Latest XBian kernel for the Raspberry Pi (3.9.8)

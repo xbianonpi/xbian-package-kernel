@@ -1,14 +1,15 @@
 #!/bin/bash
 
-KVER="3.8.13+"
-fpool="/boot/kernel3_8_13.img /boot/System3_8_13.map /boot/System.map-$KVER /boot/kernel.img-$KVER"
+KVER="3.9.8+"
+fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
 
 if [ $1 == "install" -o $1 == "upgrade" ]; then
 
-	mountpoint -q /boot || { mount /boot || exit 1; } 
+	mountpoint -q /boot || mount /boot 
 
 	for f in $fpool; do
 		{ [ -f $f ] && mv $f $f.xbian; } || true
 	done
 
+        [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
 fi
