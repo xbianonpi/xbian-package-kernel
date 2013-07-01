@@ -1,15 +1,10 @@
 #!/bin/sh
 
-rm_size() {
-	cat ./content/DEBIAN/control | grep -v "Installed-Size:" > ./content/DEBIAN/control.new
-	mv ./content/DEBIAN/control.new ./content/DEBIAN/control
-}
+package=$(sed -ne 's/\(Package: \)\(.*\)/\2/p' ./content/DEBIAN/control)
+version=$(sed -ne 's/\(Version: \)\(.*\)/\2/p' ./content/DEBIAN/control)
 
-package=$(cat ./content/DEBIAN/control | grep Package | awk '{print $2}')
-version=$(cat ./content/DEBIAN/control | grep Version | awk '{print $2}')
-
-# calculate size dynamically. remove first any entry, then add the actual 
-rm_size
+# calculate size dynamically. remove first any entry, then add the actual
+sed -i '/Installed-Size:/d' ./content/DEBIAN/control
 printf "Installed-Size: %d\n" $(du -s ./content | awk '{print $1}') >> ./content/DEBIAN/control
 
 cd content
@@ -18,4 +13,4 @@ cd ..
 fakeroot dpkg-deb -b ./content "${package}""${version}".deb
 
 # remove the size again, because on different filesystems du will return different size
-rm_size
+sed -i '/Installed-Size:/d' ./content/DEBIAN/control
