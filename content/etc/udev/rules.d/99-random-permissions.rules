@@ -1,1 +1,0 @@
-KERNEL=="[fe]random", MODE="0666"

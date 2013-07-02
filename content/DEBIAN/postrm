@@ -1,7 +1,9 @@
 #!/bin/bash
 
-if [ $1 == "remove" ]; then
+KVER=3.9.8+
 
-	true
+if [ $1 == "purge" ]; then
+
+    [ -d /lib/modules/$KVER ] && rm -fr /lib/modules/$KVER || true
 
 fi
