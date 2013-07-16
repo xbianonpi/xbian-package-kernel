@@ -1,6 +1,6 @@
 #!/bin/bash
 
-KVER="3.9.8+"
+KVER="3.10.1+"
 fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
 
 if [ $1 == "configure" ]; then
@@ -15,4 +15,6 @@ if [ $1 == "configure" ]; then
         done
 
         [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian || true
+
+	insserv -fr rng-tools
 fi
