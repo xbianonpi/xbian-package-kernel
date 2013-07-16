@@ -1,0 +1,2 @@
+# one of frandom or hwrng
+GENERATOR=hwrng

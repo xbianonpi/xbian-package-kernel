@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set +e
+
+. /etc/default/xbian-rnd
+
+[ "$GENERATOR" = hwrng ] || exit 0
+
+rndname=$(basename $DEVNAME)
+OPPOSITE="/dev/urandom /dev/random"
+
+case $rndname in
+    urandom|random)
+        [ -e /dev/hwrng ] && { mv $DEVNAME $DEVNAME.orig; ln $OPPOSITE $DEVNAME; }
+        ;;
+    hwrng)
+        for o in $OPPOSITE; do
+            mv $o $o.orig
+            ln $DEVNAME $o
+        done
+        ;;
+esac
