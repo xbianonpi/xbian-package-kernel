@@ -2,8 +2,8 @@
 
 KVER=3.10.1+
 
-#if [ $1 == "remove" -o ]; then
+#if [ $1 == "remove" -o $1 = purge ]; then
 
-    [ -d /lib/modules/$KVER.xbian ] || rm -fr /lib/modules/$KVER || :
+[ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian || true
 
 #fi

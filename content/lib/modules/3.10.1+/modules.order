@@ -1,3 +1,4 @@
+extra/8188eu.ko
 kernel/arch/arm/crypto/aes-arm.ko
 kernel/arch/arm/crypto/sha1-arm.ko
 kernel/kernel/configs.ko
