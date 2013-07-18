@@ -2,6 +2,10 @@
 
 set +e
 
+. /etc/default/xbian-rnd
+
+[ "$GENERATOR" = frandom ] || exit 0
+
 rndname=$(basename $DEVNAME)
 [ $DEVNAME = /dev/urandom ] && OPPOSITE=/dev/frandom
 [ $DEVNAME = /dev/random ] && OPPOSITE=/dev/erandom

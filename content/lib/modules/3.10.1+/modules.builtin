@@ -1,8 +1,6 @@
 kernel/arch/arm/mach-bcm2708/dmaer_master.ko
 kernel/fs/binfmt_script.ko
-kernel/fs/cachefiles/cachefiles.ko
 kernel/fs/exportfs/exportfs.ko
-kernel/fs/fscache/fscache.ko
 kernel/fs/nls/nls_base.ko
 kernel/fs/nls/nls_cp437.ko
 kernel/fs/nls/nls_ascii.ko
@@ -17,6 +15,7 @@ kernel/crypto/eseqiv.ko
 kernel/crypto/crypto_hash.ko
 kernel/crypto/pcompress.ko
 kernel/crypto/cryptomgr.ko
+kernel/crypto/md5.ko
 kernel/crypto/des_generic.ko
 kernel/crypto/aes_generic.ko
 kernel/crypto/crc32c.ko
@@ -31,8 +30,6 @@ kernel/drivers/input/input-core.ko
 kernel/drivers/input/evdev.ko
 kernel/drivers/input/serio/serio.ko
 kernel/drivers/input/serio/libps2.ko
-kernel/drivers/leds/led-class.ko
-kernel/drivers/leds/leds-gpio.ko
 kernel/drivers/misc/vc04_services/vchiq.ko
 kernel/drivers/mmc/card/mmc_block.ko
 kernel/drivers/mmc/core/mmc_core.ko
@@ -54,10 +51,6 @@ kernel/drivers/video/cfbfillrect.ko
 kernel/drivers/video/cfbcopyarea.ko
 kernel/drivers/video/cfbimgblt.ko
 kernel/drivers/video/bcm2708_fb.ko
-kernel/drivers/video/console/fbcon.ko
-kernel/drivers/video/console/bitblit.ko
-kernel/drivers/video/console/font.ko
-kernel/drivers/video/console/softcursor.ko
 kernel/net/dns_resolver/dns_resolver.ko
 kernel/net/ipv4/tcp_cubic.ko
 kernel/net/packet/af_packet.ko

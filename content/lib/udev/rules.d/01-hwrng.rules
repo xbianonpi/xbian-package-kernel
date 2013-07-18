@@ -1,3 +1,0 @@
-KERNEL=="random", RUN+="/usr/local/sbin/xbian-hwrng"
-KERNEL=="urandom", RUN+="/usr/local/sbin/xbian-hwrng"
-KERNEL=="hw_random", RUN+="/usr/local/sbin/xbian-hwrng"
