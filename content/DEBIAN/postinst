@@ -16,5 +16,5 @@ if [ $1 == "configure" ]; then
 
         [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian || true
 
-	insserv -fr rng-tools
+        insserv -fr rng-tools &>/dev/null
 fi
