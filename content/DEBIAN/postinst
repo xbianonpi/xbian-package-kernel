@@ -1,6 +1,6 @@
 #!/bin/bash
 
-KVER="3.10.1+"
+KVER="3.10.3+"
 fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
 
 if [ $1 == "configure" ]; then
@@ -17,4 +17,5 @@ if [ $1 == "configure" ]; then
         [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian || true
 
         insserv -fr rng-tools &>/dev/null
+        udevadm control --reload-rules || :
 fi

@@ -1,15 +1,14 @@
 Origin: XBian
 Package: xbian-package-kernel
-Version: 1.3-2
+Version: 1.3-3
 Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
 Replaces: xbian-package-kernel3.6.11
 Suggests: xbian-package-kernel-headers
-Pre-Depends: xbian-package-initramfs-tools (>=1.0-0.5)
-Depends: xbian-package-firmware (>=1.4-0.1), rng-tools
-Provides: linux-image, linux-firmware-image, linux-modules-3.10.1+
-Conflicts:  linux-firmware-image, linux-image, linux-modules-3.10.1+
+Depends: xbian-package-firmware (>=1.4-0.1), rng-tools, xbian-package-initramfs-tools (>=1.0-1)
+Provides: linux-image, linux-firmware-image, linux-modules-3.10.3+
+Conflicts:  linux-firmware-image, linux-image, linux-modules-3.10.3+
 Maintainer: Koenkk <development@xbian.org>
-Description: Latest XBian kernel for the Raspberry Pi (3.10.1)
+Description: Latest XBian kernel for the Raspberry Pi (3.10.3+)
