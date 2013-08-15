@@ -1,7 +1,8 @@
 #!/bin/bash
 
 
-KVER=3.10.3+
+KVER=3.10.4+
+
 if [ $1 == "remove" -o $1 = upgrade ]; then
 
 [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
