@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-KVER=3.12.9+
+KVER=
 
 if [ $1 == "remove" -o $1 = upgrade ]; then
 

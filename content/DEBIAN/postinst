@@ -1,6 +1,6 @@
 #!/bin/bash
 
-KVER="3.12.9+"
+KVER=""
 fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
 
 if [ $1 == "configure" ]; then
