@@ -1,6 +1,6 @@
 #!/bin/bash
 
-KVER=""
+KVER="3.12.13+"
 fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
 
 if [ $1 == "install" -o $1 == "upgrade" ]; then

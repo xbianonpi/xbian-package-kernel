@@ -1,6 +1,6 @@
 #!/bin/bash
 
-KVER=
+KVER=3.12.13+
 
 #if [ $1 == "remove" -o $1 = purge ]; then
 
