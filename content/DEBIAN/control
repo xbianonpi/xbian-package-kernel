@@ -8,7 +8,7 @@ Architecture: armhf
 Replaces: xbian-package-kernel3.6.11
 Suggests: xbian-package-kernel-headers
 Depends: xbian-package-firmware (>=1.4-3), rng-tools, xbian-package-initramfs-tools (>= 1.0-2.3)
-Provides: linux-image, linux-firmware-image, linux-modules-3.12.13+
-Conflicts:  linux-firmware-image, linux-image, linux-modules-3.12.13+
+Provides: linux-image, linux-firmware-image, linux-modules-
+Conflicts:  linux-firmware-image, linux-image, linux-modules-
 Maintainer: Koenkk <development@xbian.org>
-Description: Latest XBian kernel for the Raspberry Pi (3.12.13+)
+Description: Latest XBian kernel for the Raspberry Pi ()
