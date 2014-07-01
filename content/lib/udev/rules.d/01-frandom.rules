@@ -1,2 +1,0 @@
-KERNEL=="random", RUN+="/usr/local/sbin/xbian-frandom"
-KERNEL=="[feu]random", RUN+="/usr/local/sbin/xbian-frandom"
