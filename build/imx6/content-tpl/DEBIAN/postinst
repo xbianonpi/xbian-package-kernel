@@ -14,8 +14,6 @@ if [ $1 == "configure" ]; then
         udevadm control --reload-rules || :
 
         INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
-        
-        sed -i 's/GENERATOR=hwrng/GENERATOR=frandom/' /etc/default/xbian-rnd
 
 	if [ "$(grep Hardware /proc/cpuinfo | awk '{print $4}')" = "i.MX6" -o "$(grep Hardware /proc/cpuinfo | awk '{print $4}')" = "i.MX" ]; then
 	    echo "Updating u-boot"
