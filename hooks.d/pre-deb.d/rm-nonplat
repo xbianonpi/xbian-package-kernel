@@ -1,0 +1,6 @@
+
+[ "$config_platform_branch" != imx6 ] && return
+
+rm -f content/boot/mks content/boot/boot.scr.txt
+
+ 

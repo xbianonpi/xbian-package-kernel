@@ -1,0 +1,30 @@
+#!/bin/bash
+
+KVER="__KVER__"
+fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
+export KVER
+
+if [ $1 == "configure" ]; then
+
+        mv /boot/kernel.img-$KVER /boot/kernel.img
+        cp /boot/System.map-$KVER /boot/System.map
+        depmod -a $KVER
+
+        for f in $fpool; do
+                { [ -f $f.xbian ] && rm $f.xbian; } || true
+        done
+
+        [ -h /lib/modules/$KVER.xbian/build ] && mv /lib/modules/$KVER.xbian/build /lib/modules/$KVER
+        [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian || true
+
+        insserv -fr rng-tools &>/dev/null
+        udevadm control --reload-rules || :
+
+        INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
+        
+        sed -i 's/GENERATOR=hwrng/GENERATOR=frandom/' /etc/default/xbian-rnd
+fi
+
+[ -e "/lib/modules/3.9.8+" ] && rm -fr "/lib/modules/3.9.8+"
+
+echo "xbian-package-kernel" >>  /var/run/reboot-required || :

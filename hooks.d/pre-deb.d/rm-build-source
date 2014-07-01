@@ -1,0 +1,6 @@
+
+dl=$(find ./lib/modules -type l -iname source -o -iname build)
+
+[ -n "$dl" ] && rm $dl || :
+
+ 

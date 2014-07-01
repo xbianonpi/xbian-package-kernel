@@ -1,0 +1,4 @@
+
+[ $config_platform_branch != imx6 ] && return
+
+cp ../build/$config_platform_branch/working/arch/arm/boot/dts/*.dtb ./boot

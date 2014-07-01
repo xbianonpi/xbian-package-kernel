@@ -1,0 +1,53 @@
+#!/bin/bash
+
+KVER="__KVER__"
+export KVER
+
+if [ $1 == "configure" ]; then
+
+        depmod -a $KVER
+
+        [ -h /lib/modules/$KVER.xbian/build ] && mv /lib/modules/$KVER.xbian/build /lib/modules/$KVER
+        [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian || true
+
+        insserv -fr rng-tools &>/dev/null
+        udevadm control --reload-rules || :
+
+        INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
+        
+        sed -i 's/GENERATOR=hwrng/GENERATOR=frandom/' /etc/default/xbian-rnd
+
+	if [ "$(grep Hardware /proc/cpuinfo | awk '{print $4}')" = "i.MX6" -o "$(grep Hardware /proc/cpuinfo | awk '{print $4}')" = "i.MX" ]; then
+	    echo "Updating u-boot"
+	    dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
+	    dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42
+	    
+            if [ ! -e /boot/noenv ]; then
+                uboot-env del -i
+                uboot-env set < /etc/uboot-env/default.txt
+                uboot-env set script boot.scr
+	        uboot-env set bootdelay 0
+	    fi
+
+	    rr=$(readlink -e /dev/root)
+	    if [ "$(blkid -o value -s TYPE $rr)" != btrfs ]; then
+		sed -i 's/setenv fstype btrfs/setenv fstype other/g' /boot/boot.scr.txt
+	    else
+		sed -i 's/setenv fstype.*/setenv fstype btrfs/g' /boot/boot.scr.txt
+	    fi
+
+	    sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
+	    cd /boot; ./mks
+
+	    grep -q 'IRQBALANCE_BANNED_INTERRUPTS="147"' /etc/default/irqbalance || echo 'IRQBALANCE_BANNED_INTERRUPTS="147"' >>  /etc/default/irqbalance
+	fi
+
+fi
+
+[ -e "/lib/modules/3.9.8+" ] && rm -fr "/lib/modules/3.9.8+"
+
+
+
+echo "xbian-package-kernel" >>  /var/run/reboot-required || :
+
+exit 0

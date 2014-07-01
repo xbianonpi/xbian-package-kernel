@@ -1,0 +1,13 @@
+config_source_type=git
+config_source_type_extra=--single-branch --depth 1
+config_source_keep=yes
+config_source_reset=yes
+config_source_refresh=yes
+config_source_prepare=
+config_build_make=make
+config_build_targets=zImage modules
+config_install_targets=modules_install
+### firmware_install
+config_deb_contentclean=yes
+config_wrapper=build.package
+config_deb_pkgname=xbian-package-kernel

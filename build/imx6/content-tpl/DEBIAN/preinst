@@ -1,0 +1,16 @@
+#!/bin/bash
+
+KVER="__KVER__"
+export KVER
+
+if [ $1 == "install" -o $1 == "upgrade" ]; then
+
+        INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/preinst.d/ > /dev/null 2>&1
+#	{ mountpoint -q /boot && [ "$(findmnt -o source -n /boot)" = '/dev/mmcblk0p1' ]; } || { umount /boot >/dev/null 2>&1; mount -t vfat /dev/mmcblk0p1 /boot || { echo "CAN'T MOUNT BOOT"; exit 1; }; }
+	mountpoint -q /boot || mount /boot || :
+
+        [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
+
+fi
+
+exit 0
