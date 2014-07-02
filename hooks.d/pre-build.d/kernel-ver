@@ -1,0 +1,8 @@
+
+
+[ ! -e ../build/$config_platform_branch/config_pkgver ] && return
+
+kver="$(make -C ../build/$config_platform_branch/working kernelversion|grep -v make:)+"
+
+sed -i "s%config_deb_version=.*%config_deb_version=$kver%"  ../build/$config_platform_branch/config_pkgver
+

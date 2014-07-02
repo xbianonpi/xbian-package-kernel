@@ -2,3 +2,4 @@
 kver="$(make -C ../build/$config_platform_branch/working kernelversion|grep -v make:)+"
 
 sed -i "s%__KVER__%$kver%g" DEBIAN/*
+

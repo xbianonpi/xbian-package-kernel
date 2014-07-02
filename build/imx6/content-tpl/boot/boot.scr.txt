@@ -1,6 +1,6 @@
 setenv fstype btrfs
 
-setenv baseconfig coherent_pool=1M ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 nohdparm splash
+setenv baseconfig coherent_pool=1M ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 nohdparm splash dmfc=3
 
 if test ${fstype} != btrfs; then
     setenv bootargs $baseconfig rootfstype=ext4 rootflags=data=writeback  --startup-event mountall
