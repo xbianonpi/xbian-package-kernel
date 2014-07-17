@@ -1,0 +1,2 @@
+
+eval $config_build_env make olddefconfig
