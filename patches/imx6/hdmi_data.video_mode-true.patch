@@ -1,0 +1,11 @@
+--- build/imx6/working/drivers/video/mxc/mxc_hdmi.c.orig	2014-07-17 00:02:23.670111491 +0200
++++ build/imx6/working/drivers/video/mxc/mxc_hdmi.c	2014-07-17 00:03:34.135997832 +0200
+@@ -2189,7 +2189,7 @@
+ 	hdmi_disable_overflow_interrupts();
+ 
+ 	dev_dbg(&hdmi->pdev->dev, "CEA mode used vic=%d\n", hdmi->vic);
+-	if (hdmi->edid_cfg.hdmi_cap)
++	if ((hdmi->edid_cfg.hdmi_cap)  || (hdmi->vic == 16) || ( hdmi->vic == 4))
+ 		hdmi->hdmi_data.video_mode.mDVI = false;
+ 	else {
+ 		dev_dbg(&hdmi->pdev->dev, "CEA mode vic=%d work in DVI\n", hdmi->vic);
