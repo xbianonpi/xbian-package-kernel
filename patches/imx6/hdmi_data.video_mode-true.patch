@@ -1,5 +1,5 @@
---- build/imx6/working/drivers/video/mxc/mxc_hdmi.c.orig	2014-07-17 00:02:23.670111491 +0200
-+++ build/imx6/working/drivers/video/mxc/mxc_hdmi.c	2014-07-17 00:03:34.135997832 +0200
+--- a/drivers/video/mxc/mxc_hdmi.c
++++ b/drivers/video/mxc/mxc_hdmi.c
 @@ -2189,7 +2189,7 @@
  	hdmi_disable_overflow_interrupts();
  
