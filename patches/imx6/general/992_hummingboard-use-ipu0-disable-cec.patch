@@ -1,5 +1,5 @@
---- a/arch/arm/boot/dts/imx6dl-hummingboard.dts	2014-02-28 09:35:11.000000000 +0100
-+++ b/arch/arm/boot/dts/imx6dl-hummingboard.dts	2014-03-17 07:01:02.258818227 +0100
+--- a/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi
++++ b/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi
 @@ -127,8 +127,6 @@
  };
  
