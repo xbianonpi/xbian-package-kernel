@@ -15,7 +15,7 @@ if [ $1 == "configure" ]; then
 
         INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
 
-	if [ "$(grep Hardware /proc/cpuinfo | awk '{print $4}')" = "i.MX6" -o "$(grep Hardware /proc/cpuinfo | awk '{print $4}')" = "i.MX" ]; then
+	if [ "$(xbian-arch)" = iMX6 ]; then
 	    echo "Updating u-boot"
 	    dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
 	    dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42
@@ -35,9 +35,14 @@ if [ $1 == "configure" ]; then
 	    fi
 
 	    sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
+	    if [ -e /boot/boot.scr.txt.user ]; then
+		res=$(grep video=mxcfb0:dev= /boot/boot.scr.txt.user); res=${res##*video=mxcfb0\:dev=}; res=${res%% *};
+		sed -i "s%hdmi,1920x1080M@60,if=RGB24%$res%" /boot/boot.scr.txt
+		rm -f /boot/boot.scr.txt.user
+	    fi
 	    cd /boot; ./mks
 
-	    grep -q 'IRQBALANCE_BANNED_INTERRUPTS="147"' /etc/default/irqbalance || echo 'IRQBALANCE_BANNED_INTERRUPTS="147"' >>  /etc/default/irqbalance
+	    #grep -q 'IRQBALANCE_BANNED_INTERRUPTS="147"' /etc/default/irqbalance || echo 'IRQBALANCE_BANNED_INTERRUPTS="147"' >>  /etc/default/irqbalance
 	fi
 
 fi
