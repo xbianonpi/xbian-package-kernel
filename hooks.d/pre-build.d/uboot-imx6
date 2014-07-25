@@ -1,17 +1,31 @@
 
 [ "$config_platform_branch" != imx6 ] && return 0 || :
 
-echo "BUILDING U-BOOT... Please wait"
 set -e
+
+needcompile=yes
 
 if [ -d .uboot ]; then
     cd .uboot
-    git reset --hard; git clean -dfx  >/dev/null 2>&1
-    git pull --depth=1 origin imx6
+
+    shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
+    sharem=$(git ls-remote -h git://github.com/SolidRun/u-boot-imx6 imx6 | awk '{print $1}')
+
+    if [ $sharem != $shaloc ]; then
+        git clean -dfx  >/dev/null 2>&1
+        git reset --hard
+        git pull --depth=1 origin imx6
+    else
+        needcompile=no
+    fi
 else
     git clone -b imx6 --depth=1 --single-branch git://github.com/SolidRun/u-boot-imx6 .uboot
     cd .uboot
 fi
+
+[ $needcompile = yes ] || return 0
+
+echo "BUILDING U-BOOT... Please wait"
 
 cat << \EOF > /tmp/001.patch
 --- a/include/configs/mx6_cubox-i.h
