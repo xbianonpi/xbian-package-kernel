@@ -1,0 +1,85 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          imx6-bluetooth
+# Required-Start:    $local_fs kmod
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Loads bluetooth firmware for iMX6
+# Description:
+#
+### END INIT INFO
+
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+NAME=imx6-bluetooth
+DESC="bluetooth firmware load"
+
+if [ "$(uname)" != Linux ]; then
+  exit 0
+fi
+
+. /lib/lsb/init-functions
+[ -r /etc/default/rcS ] && . /etc/default/rcS
+
+set -e
+CODE=0
+
+case "$1" in
+  start)
+    if init_is_upstart; then
+      exit 1
+    fi
+    log_daemon_msg "Enabling $DESC" "$NAME"
+
+    [ $(xbian-arch) = iMX6 ] || exit 0
+
+    if [ "$(cat /sys/devices/soc0/soc.1/2100000.aips-bus/2190000.usdhc/mmc_host/mmc0/mmc0:0001/mmc0:0001:1/device)" = '0x4329' ]; then
+        ps ax | grep -v grep | grep -q brcm_patchram_plus || /usr/local/sbin/brcm_patchram_plus  -d --patchram /lib/firmware/brcm/bcm4329.hcd --baudrate 3000000 --use_baudrate_for_download /dev/ttymxc3 --enable_hci &
+    elif [ "$(cat /sys/devices/soc0/soc.1/2100000.aips-bus/2190000.usdhc/mmc_host/mmc0/mmc0:0001/mmc0:0001:1/device)" = '0x4330' ]; then
+        ps ax | grep -v grep | grep -q brcm_patchram_plus || /usr/local/sbin/brcm_patchram_plus -d --patchram /lib/firmware/brcm/bcm4330.hcd --baudrate 3000000 --use_baudrate_for_download /dev/ttymxc3 --enable_hci --no2bytes --enable_lpm --tosleep=50000 &
+    fi
+
+    for d in $(ls /sys/class/bluetooth); do
+        hciconfig $d up
+    done
+
+    [ ! -x /sbin/iwconfig ] || iwconfig wlan0 power off || :
+
+    log_end_msg 0
+    exit 0
+    ;;
+
+  stop)
+    if init_is_upstart; then
+      exit 0
+    fi
+    log_daemon_msg "Disabling $DESC" "$NAME"
+
+    [ $(xbian-arch) = iMX6 ] || exit 0
+
+    for d in $(ls /sys/class/bluetooth); do
+        hciconfig $d down || :
+    done
+
+    kill $(ps ax | grep brcm_patchram_plus|grep -v grep|awk '{print $1}')
+
+    log_end_msg $?
+    exit $?
+    ;;
+
+  restart|force-reload)
+    if init_is_upstart; then
+      exit 1
+    fi
+    $0 stop
+    $0 start
+    ;;
+
+  *)
+    N=/etc/init.d/$NAME
+    echo "Usage: $N {start|stop|restart|force-reload}" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

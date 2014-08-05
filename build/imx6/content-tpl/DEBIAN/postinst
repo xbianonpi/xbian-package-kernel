@@ -43,6 +43,7 @@ if [ $1 == "configure" ]; then
 	    cd /boot; ./mks
 
 	    #grep -q 'IRQBALANCE_BANNED_INTERRUPTS="147"' /etc/default/irqbalance || echo 'IRQBALANCE_BANNED_INTERRUPTS="147"' >>  /etc/default/irqbalance
+	    update-rc.d imx6-bluetooth defaults >/dev/null 2>&1
 	fi
 
 fi

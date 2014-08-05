@@ -1,7 +1,8 @@
 .DS_Store
 md5sums
-content*
+content/*
 build/*/working*
+build/vexpress
 build.*
 *.deb
 ._*
