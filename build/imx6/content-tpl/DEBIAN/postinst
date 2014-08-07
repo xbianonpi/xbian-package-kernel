@@ -21,7 +21,7 @@ if [ $1 == "configure" ]; then
 	    dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42
 	    
             if [ ! -e /boot/noenv ]; then
-                uboot-env del -i
+                uboot-env del -I
                 uboot-env set < /etc/uboot-env/default.txt
                 uboot-env set script boot.scr
 	        uboot-env set bootdelay 0
