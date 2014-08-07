@@ -1,5 +1,5 @@
 
-[ "$config_platform_branch" != imx6 ] && return
+[ "$config_platform_branch" != imx6 -a "$config_platform_branch" != imx6-51 ] && return 0 || :
 
 rm -f content/boot/mks content/boot/boot.scr.txt
 

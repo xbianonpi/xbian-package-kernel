@@ -1,5 +1,6 @@
 
-kver="$(make -C ../build/$config_platform_branch/working kernelversion|grep -v make:)+"
+kver="$(make -C ../build/$config_platform_branch/working kernelversion >/dev/null 2>&1| \
+cat ../build/$config_platform_branch/working/include/config/kernel.release)"
 
 sed -i "s%__KVER__%$kver%g" DEBIAN/*
 
