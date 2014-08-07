@@ -1,9 +1,9 @@
 config_source_configure=
 config_build_env=CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm 
 config_source_branch=linux-linaro-lsk-mx6
-config_deb_version=1.1.0-1
+config_deb_version=1.2.0
 config_source_addr=git://github.com/SolidRun/linux-linaro-stable-mx6.git
 config_deb_pkgname=linux-image-3.10.30-armmp
 config_deb_ctrlextra=Suggests: linux-headers-3.10.30-armmp\\nBreaks: xbian-update (<<1.0.2-100), xbian-package-kernel-6q (<<1.3.11~), xbian-package-firmware-6q (<<1.6.1), xbian-package-imx-lib-6q (<<1.0.3), xbian-package-libfslvpuwrap-6q (<<1.0.1), xbian-package-xserver-xorg-video-vivante-6q (<<1.2.0)
 config_deb_depends=rng-tools, u-boot-tools
-config_build_targets=zImage modules imx6dl-cubox-i.dtb imx6q-cubox-i.dtb imx6dl-hummingboard.dtb
+config_build_targets=zImage modules imx6dl-cubox-i.dtb imx6q-cubox-i.dtb imx6dl-hummingboard.dtb imx6q-hummingboard.dtb

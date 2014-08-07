@@ -2,10 +2,15 @@ setenv fstype btrfs
 
 setenv baseconfig coherent_pool=1M ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 nohdparm splash dmfc=3
 
+setenv cmasize cma=256M
+if test ${cpu} = 6SOLO && test ${board} != mx6-cubox-i; then
+    setenv cmasize cma=16M
+fi
+
 if test ${fstype} != btrfs; then
-    setenv bootargs $baseconfig rootfstype=ext4 rootflags=data=writeback  --startup-event mountall
+    setenv bootargs $baseconfig $cmasize rootfstype=ext4 rootflags=data=writeback  --startup-event mountall
 else
-    setenv bootargs $baseconfig rootfstype=btrfs rootflags=subvol=root/@,autodefrag,compress=lz4 --startup-event mountall
+    setenv bootargs $baseconfig $cmasize rootfstype=btrfs rootflags=subvol=root/@,autodefrag,compress=lz4 --startup-event mountall
 fi
 
 if test ${debug} != ""; then exit 1; fi
@@ -19,7 +24,11 @@ if test ${board} = mx6-cubox-i; then
         load mmc 0:1 ${fdt_addr} imx6q-cubox-i.dtb
     fi
 else
-    load mmc 0:1 ${fdt_addr} imx6dl-hummingboard.dtb
+    if test ${cpu} = 6SOLO || test ${cpu} = 6DL; then 
+        load mmc 0:1 ${fdt_addr} imx6dl-hummingboard.dtb
+    else 
+        load mmc 0:1 ${fdt_addr} imx6q-hummingboard.dtb
+    fi
 fi
 
 if load mmc 0:1 0x20000000 initramfs.gz; then
