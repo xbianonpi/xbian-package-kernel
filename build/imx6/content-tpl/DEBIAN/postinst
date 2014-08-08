@@ -18,10 +18,13 @@ if [ $1 == "configure" ]; then
 	if [ "$(xbian-arch)" = iMX6 ]; then
 	    echo "Updating u-boot"
 	    dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
-	    dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42
+	    dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42 conv=fsync
 	    
             if [ ! -e /boot/noenv ]; then
-                uboot-env del -I
+                uboot-env del -i
+                if [ $? -ne 0 ]; then
+                	uboot-env del -I
+                fi
                 uboot-env set < /etc/uboot-env/default.txt
                 uboot-env set script boot.scr
 	        uboot-env set bootdelay 0
