@@ -1,5 +1,5 @@
 config_source_type=git
-config_source_type_extra=--single-branch --depth 1
+config_source_type_extra=--single-branch
 config_source_keep=yes
 config_source_reset=no
 config_source_refresh=yes

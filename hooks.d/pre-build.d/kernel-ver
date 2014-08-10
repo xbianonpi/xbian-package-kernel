@@ -1,7 +1,0 @@
-
-[ ! -e ../config_pkgver ] && return 0 || :
-
-kver="$(make kernelversion >/dev/null 2>&1; cat include/config/kernel.release)"
-
-sed -i "s%config_deb_version=.*%config_deb_version=$kver%"  ../config_pkgver
-
