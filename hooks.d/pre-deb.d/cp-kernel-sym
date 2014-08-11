@@ -1,7 +1,7 @@
 
 
-kver="$(make -C ../build/$config_platform_branch/working kernelversion >/dev/null 2>&1| \
-cat ../build/$config_platform_branch/working/include/config/kernel.release)"
+kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+dver=$(cat ../build/$config_platform_branch/config | grep config_deb_version | awk -F'=' '{print $2}')
 
 case $config_platform_branch in
     imx6*)

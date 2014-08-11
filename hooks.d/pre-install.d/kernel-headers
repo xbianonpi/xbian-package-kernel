@@ -1,0 +1,142 @@
+DEST=$(readlink -f ../../../content/)
+ARCH=arm
+
+echo "Creating kernel headers package. This may take a while."
+
+kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+dver=$(cat ../config | grep config_deb_version | awk -F'=' '{print $2}')
+[ -z "$dver" ] && dver=$kver
+DESTHEAD=$DEST/usr/src/linux-headers-$kver
+
+( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; mkdir -p $DESTHEAD; )
+find ./ -iname Kconfig\* -o -iname Makefile\* -o -iname Kbuild\* -o -iname config | grep -v '\.uboot\|.git' | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
+find ./arch/$ARCH ./include ./scripts ./usr ./tools/include | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
+( cd $DESTHEAD/arch/$ARCH/include; find ./ -iname \*.h | xargs cp -a --parents -t ../../../usr/include; ) 2>/dev/null
+cp -av -t $DESTHEAD .config Module.symvers
+( cd $DESTHEAD/usr/include; find ./ -iname .install -o -iname ..install.cmd | xargs rm -f ; )
+
+( cd $DESTHEAD; make ARCH=$ARCH clean; ) 2>/dev/null
+
+case $config_platform_branch in
+    imx6*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-headers-$kver-armmp
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: make, gcc
+Provides: linux-headers, linux-headers-$kver
+Conflicts: linux-headers, linux-headers-$kver
+Suggests: dkms
+Maintainer: mk01 <development@xbian.org>
+Description: kernel headers ($kver)
+EOF
+        ;;
+    rpi*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: xbian-package-kernel-headers
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: make, gcc
+Provides: linux-headers, linux-headers-$kver
+Conflicts: linux-headers, linux-headers-$kver
+Suggests: dkms
+Maintainer: mk01 <development@xbian.org>
+Description: kernel headers ($kver)
+EOF
+        ;;
+    *)
+        ;;
+esac
+
+cat<<EOF>$DEST/DEBIAN/postinst
+#!/bin/bash
+
+if [ \$1 = "configure" ]; then
+
+        [ -e /lib/modules/$kver/build ] && rm -f /lib/modules/$kver/build
+        mkdir -p /lib/modules/$kver
+        ln -s /usr/src/linux-headers-$kver /lib/modules/$kver/build || :
+
+        cd /usr/src/linux-headers-$kver
+        echo "Preparing headers ... "
+
+        make -s -k scripts >/dev/null 2>&1
+        [ -d /usr/src/linux-headers-$kver.xbian ] && rm -fr /usr/src/linux-headers-$kver.xbian || true
+
+        [ ! -d /etc/kernel/header_postinst.d  ] || run-parts --report --new-session -a $kver /etc/kernel/header_postinst.d > /dev/null 2>&1
+
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/postrm
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "purge" -o \$1 = "remove" ]; then
+
+[ ! -d /usr/src/linux-headers-$kver.xbian ] || rm -fr /usr/src/linux-headers-$kver.xbian
+
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/preinst
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "install" -o \$1 = "upgrade" ]; then
+
+    [ -d /usb/src/linux-headers-$kver ] && mv /usr/src/linux-headers-$kver /usr/src/linux-headers-$kver.xbian || true
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/prerm
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "remove" -o \$1 = "purge" ]; then
+
+        [ -d /usb/src/linux-headers-$kver ] && mv /usb/src/linux-headers-$kver /usb/src/linux-headers-$kver.xbian
+
+fi
+
+if [ $1 = "upgrade" ]; then
+
+        true
+
+fi
+EOF
+
+chmod +x $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN/postrm
+
+( cd $DEST/..; $SHELL $XBIANROOT/gen.package; )
+
+mkdir -p $DEST/usr
+mv $DESTHEAD/usr/include $DEST/usr
+rm -fr $DEST/usr/src
+rm -f $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN/postrm
+
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-libc-dev
+Version: $kver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: libc
+Maintainer: mk01 <development@xbian.org>
+Description: Linux support headers for userspace development ($kver)
+EOF
+
+( cd $DEST/..; $SHELL $XBIANROOT/gen.package; )

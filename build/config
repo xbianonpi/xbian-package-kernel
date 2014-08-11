@@ -5,7 +5,7 @@ config_source_reset=no
 config_source_refresh=yes
 config_source_prepare=
 config_build_make=make
-config_build_targets=zImage modules
+config_build_targets=zImage modules headers_install
 config_install_targets=modules_install
 ### firmware_install
 config_deb_contentclean=yes

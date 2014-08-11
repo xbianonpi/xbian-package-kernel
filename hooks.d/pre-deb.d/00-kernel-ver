@@ -1,8 +1,7 @@
 
-kver="$(make -C ../build/$config_platform_branch/working kernelversion | \
-cat ../build/$config_platform_branch/working/include/config/kernel.release)"
 
-sed -i "s%config_deb_version=.*%config_deb_version=$kver%g" ../build/$config_platform_branch/config_pkgver
+kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+dver=$(cat ../build/$config_platform_branch/config | grep config_deb_version | awk -F'=' '{print $2}')
 
 sed -i "s%__KVER__*%$kver%g" DEBIAN/*
 
