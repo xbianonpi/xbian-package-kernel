@@ -68,7 +68,7 @@ if [ \$1 = "configure" ]; then
         cd /usr/src/linux-headers-$kver
         echo "Preparing headers ... "
 
-        make -s -k scripts >/dev/null 2>&1
+        make -s -k ARCH=$ARCH CROSS_COMPILE= scripts >/dev/null 2>&1
         [ -d /usr/src/linux-headers-$kver.xbian ] && rm -fr /usr/src/linux-headers-$kver.xbian || true
 
         [ ! -d /etc/kernel/header_postinst.d  ] || run-parts --report --new-session -a $kver /etc/kernel/header_postinst.d > /dev/null 2>&1
