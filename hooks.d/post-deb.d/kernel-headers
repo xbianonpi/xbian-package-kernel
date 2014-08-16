@@ -4,7 +4,7 @@ ARCH=arm
 echo "Creating kernel headers package. This may take a while."
 
 kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
-dver=$(cat ../config | grep config_deb_version | awk -F'=' '{print $2}')
+dver=$(cat $DEST/DEBIAN/control | grep Version: | awk '{print $2}')
 [ -z "$dver" ] && dver=$kver
 DESTHEAD=$DEST/usr/src/linux-headers-$kver
 
@@ -12,10 +12,10 @@ DESTHEAD=$DEST/usr/src/linux-headers-$kver
 find ./ -iname Kconfig\* -o -iname Makefile\* -o -iname Kbuild\* -o -iname config | grep -v '\.uboot\|.git' | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
 find ./arch/$ARCH ./include ./scripts ./usr ./tools/include | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
 ( cd $DESTHEAD/arch/$ARCH/include; find ./ -iname \*.h | xargs cp -a --parents -t ../../../usr/include; ) 2>/dev/null
-cp -av -t $DESTHEAD .config Module.symvers
+cp -a -t $DESTHEAD .config Module.symvers
 ( cd $DESTHEAD/usr/include; find ./ -iname .install -o -iname ..install.cmd | xargs rm -f ; )
 
-( cd $DESTHEAD; make ARCH=$ARCH clean; ) 2>/dev/null
+( cd $DESTHEAD; make ARCH=$ARCH clean; ) >/dev/null 2>&1
 
 case $config_platform_branch in
     imx6*)
@@ -27,7 +27,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: make, gcc
+Depends: make, gcc, linux-image-$kver-armmp (= $dver)
 Provides: linux-headers, linux-headers-$kver
 Conflicts: linux-headers, linux-headers-$kver
 Suggests: dkms
@@ -44,7 +44,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: make, gcc
+Depends: make, gcc, xbian-package-kernel (= $dver)
 Provides: linux-headers, linux-headers-$kver
 Conflicts: linux-headers, linux-headers-$kver
 Suggests: dkms
@@ -68,10 +68,13 @@ if [ \$1 = "configure" ]; then
         cd /usr/src/linux-headers-$kver
         echo "Preparing headers ... "
 
-        make -s -k ARCH=$ARCH CROSS_COMPILE= scripts >/dev/null 2>&1
+        ncpu=\$(grep -c processor /proc/cpuinfo)
+        [ -z "\$ncpu" ] && ncpu=1
+        make clean >/dev/null 2>&1
+        make -j\$ncpu scripts >/dev/null 2>&1
         [ -d /usr/src/linux-headers-$kver.xbian ] && rm -fr /usr/src/linux-headers-$kver.xbian || true
 
-        [ ! -d /etc/kernel/header_postinst.d  ] || run-parts --report --new-session -a $kver /etc/kernel/header_postinst.d > /dev/null 2>&1
+        [ ! -d /etc/kernel/header_postinst.d  ] || run-parts --report --new-session -a $kver /etc/kernel/header_postinst.d
 
 fi
 EOF
@@ -110,7 +113,7 @@ if [ \$1 = "remove" -o \$1 = "purge" ]; then
 
 fi
 
-if [ $1 = "upgrade" ]; then
+if [ \$1 = "upgrade" ]; then
 
         true
 
@@ -134,7 +137,6 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: libc
 Maintainer: mk01 <development@xbian.org>
 Description: Linux support headers for userspace development ($kver)
 EOF
