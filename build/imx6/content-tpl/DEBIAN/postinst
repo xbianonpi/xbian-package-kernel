@@ -15,45 +15,39 @@ if [ $1 == "configure" ]; then
 
         INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
 
-	if [ "$(xbian-arch)" = iMX6 ]; then
-	    echo "Updating u-boot"
-	    dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
-	    dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42 conv=fsync
-	    
-            if [ ! -e /boot/noenv ]; then
-                uboot-env del -i
-                if [ $? -ne 0 ]; then
-                	uboot-env del -I
+        if [ "$(xbian-arch)" = iMX6 ]; then
+            if [ -b /dev/mmcblk0 ]; then
+                echo "Updating u-boot"
+                dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
+                dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42 conv=fsync
+                if [ ! -e /boot/noenv ]; then
+                    uboot-env del -i || uboot-env del -I
+                    uboot-env set < /etc/uboot-env/default.txt
+                    uboot-env set script boot.scr
+                    uboot-env set bootdelay 0
                 fi
-                uboot-env set < /etc/uboot-env/default.txt
-                uboot-env set script boot.scr
-	        uboot-env set bootdelay 0
-	    fi
+            fi
 
-	    rr=$(readlink -e /dev/root)
-	    if [ "$(blkid -o value -s TYPE $rr)" != btrfs ]; then
-		sed -i 's/setenv fstype btrfs/setenv fstype other/g' /boot/boot.scr.txt
-	    else
-		sed -i 's/setenv fstype.*/setenv fstype btrfs/g' /boot/boot.scr.txt
-	    fi
+            rr=$(readlink -e /dev/root)
+            if [ "$(blkid -o value -s TYPE $rr)" != btrfs ]; then
+                sed -i 's/setenv fstype btrfs/setenv fstype other/g' /boot/boot.scr.txt
+            else
+                sed -i 's/setenv fstype.*/setenv fstype btrfs/g' /boot/boot.scr.txt
+            fi
 
-	    sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
-	    if [ -e /boot/boot.scr.txt.user ]; then
-		res=$(grep video=mxcfb0:dev= /boot/boot.scr.txt.user); res=${res##*video=mxcfb0\:dev=}; res=${res%% *};
-		sed -i "s%hdmi,1920x1080M@60,if=RGB24%$res%" /boot/boot.scr.txt
-		rm -f /boot/boot.scr.txt.user
-	    fi
-	    cd /boot; ./mks
+            sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
+            if [ -e /boot/boot.scr.txt.user ]; then
+                res=$(grep video=mxcfb0:dev= /boot/boot.scr.txt.user); res=${res##*video=mxcfb0\:dev=}; res=${res%% *};
+                sed -i "s%hdmi,1920x1080M@60,if=RGB24%$res%" /boot/boot.scr.txt
+                rm -f /boot/boot.scr.txt.user
+            fi
+            cd /boot; ./mks
 
-	    #grep -q 'IRQBALANCE_BANNED_INTERRUPTS="147"' /etc/default/irqbalance || echo 'IRQBALANCE_BANNED_INTERRUPTS="147"' >>  /etc/default/irqbalance
-	    update-rc.d imx6-bluetooth defaults >/dev/null 2>&1
-	fi
+            #grep -q 'IRQBALANCE_BANNED_INTERRUPTS="147"' /etc/default/irqbalance || echo 'IRQBALANCE_BANNED_INTERRUPTS="147"' >>  /etc/default/irqbalance
+            update-rc.d imx6-bluetooth defaults >/dev/null 2>&1
+        fi
 
 fi
-
-[ -e "/lib/modules/3.9.8+" ] && rm -fr "/lib/modules/3.9.8+"
-
-
 
 echo "xbian-package-kernel" >>  /var/run/reboot-required || :
 
