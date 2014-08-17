@@ -8,28 +8,34 @@ dver=$(cat $DEST/DEBIAN/control | grep Version: | awk '{print $2}')
 [ -z "$dver" ] && dver=$kver
 DESTHEAD=$DEST/usr/src/linux-headers-$kver
 
+echo "... cleaning tmp dir"
 ( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; mkdir -p $DESTHEAD; )
+echo "... copying make/kconfig files"
 find ./ -iname Kconfig\* -o -iname Makefile\* -o -iname Kbuild\* -o -iname config | grep -v '\.uboot\|.git' | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
+echo "... copying .h files and helper scripts"
 find ./arch/$ARCH ./include ./scripts ./usr ./tools/include | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
+echo "... copying ARCH related files"
 ( cd $DESTHEAD/arch/$ARCH/include; find ./ -iname \*.h | xargs cp -a --parents -t ../../../usr/include; ) 2>/dev/null
 cp -a -t $DESTHEAD .config Module.symvers
 ( cd $DESTHEAD/usr/include; find ./ -iname .install -o -iname ..install.cmd | xargs rm -f ; )
 
+echo "... running make clean"
 ( cd $DESTHEAD; make ARCH=$ARCH clean; ) >/dev/null 2>&1
+echo "... done"
 
 case $config_platform_branch in
     imx6*)
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
-Package: linux-headers-$kver-armmp
+Package: linux-headers-${kver%+}-armmp
 Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: make, gcc, linux-image-$kver-armmp (= $dver)
-Provides: linux-headers, linux-headers-$kver
-Conflicts: linux-headers, linux-headers-$kver
+Depends: make, gcc, linux-image-${kver%+}-armmp (= $dver)
+Provides: linux-headers, linux-headers-${kver%+}
+Conflicts: linux-headers, linux-headers-${kver%+}
 Suggests: dkms
 Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
@@ -132,7 +138,7 @@ rm -f $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-libc-dev
-Version: $kver
+Version: ${kver%+}
 Section: kernel
 Essential: No
 Priority: optional
