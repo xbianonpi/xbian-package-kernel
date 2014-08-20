@@ -1,0 +1,13 @@
+diff --git a/sound/soc/fsl/imx-hdmi-dma.c b/sound/soc/fsl/imx-hdmi-dma.c
+index f811799..cdd6006 100644
+--- a/sound/soc/fsl/imx-hdmi-dma.c
++++ b/sound/soc/fsl/imx-hdmi-dma.c
+@@ -903,7 +903,7 @@ static struct snd_pcm_hardware snd_imx_hardware = {
+ 	.period_bytes_min = HDMI_DMA_PERIOD_BYTES / 2,
+ 	.period_bytes_max = HDMI_DMA_PERIOD_BYTES / 2,
+ 	.periods_min = 8,
+-	.periods_max = 8,
++	.periods_max = 8*2,
+ 	.fifo_size = 0,
+ };
+ 

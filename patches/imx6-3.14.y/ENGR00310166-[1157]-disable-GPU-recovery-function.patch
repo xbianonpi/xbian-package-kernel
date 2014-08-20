@@ -1,0 +1,31 @@
+commit 8a213f47050eb49da70877090e07323b530bf147
+Author: Richard Liu <r66033@freescale.com>
+Date:   Thu Apr 24 13:15:53 2014 +0800
+
+    ENGR00310166 [#1157] disable GPU recovery function
+    
+    Disable GPU auto recovery so that GPU can dump the stack.
+    GPU support auto recovery function, when GPU meet some issue
+    it will try to do recovery, but most of cases GPU can't really
+    recovery, we do find some cases GPU can recovery for example
+    some 2D hang, but customer is not accept such recovery, so show
+    the GPU stack dump and find the root cause is the correct way.
+    
+    Date: Apr 24, 2014
+    
+    Signed-off-by: Richard Liu <r66033@freescale.com>
+    (cherry picked from commit 888c79ab0f114b7b259266fc82c1399cbb926faf)
+
+diff --git a/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_options.h b/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_options.h
+index 420437f..4c1dc3e 100644
+--- a/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_options.h
++++ b/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_options.h
+@@ -694,7 +694,7 @@
+         This define enables the recovery code.
+ */
+ #ifndef gcdENABLE_RECOVERY
+-#   define gcdENABLE_RECOVERY                   1
++#   define gcdENABLE_RECOVERY                   0
+ #endif
+ 
+ /*

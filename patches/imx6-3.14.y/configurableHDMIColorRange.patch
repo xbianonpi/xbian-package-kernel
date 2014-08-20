@@ -1,0 +1,98 @@
+commit d2c4510311f7b6195a2f96511338e69f03f78819
+Author: Matus Kral <matuskral@me.com>
+Date:   Mon Aug 18 14:32:04 2014 +0200
+
+    user configurable HDMI full color range (FULL range is default)
+    'crange=std' will force default(limited) range
+    
+       video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24,crange=std
+
+diff --git a/drivers/video/mxc/mxc_dispdrv.h b/drivers/video/mxc/mxc_dispdrv.h
+index 127fd08..acad3f0 100644
+--- a/drivers/video/mxc/mxc_dispdrv.h
++++ b/drivers/video/mxc/mxc_dispdrv.h
+@@ -28,6 +28,8 @@ struct mxc_dispdrv_setting {
+ 	/*feedback parameter*/
+ 	int dev_id;
+ 	int disp_id;
++
++	int full_quant;
+ };
+ 
+ struct mxc_dispdrv_driver {
+diff --git a/drivers/video/mxc/mxc_hdmi.c b/drivers/video/mxc/mxc_hdmi.c
+index e9b4010..e253d6f 100644
+--- a/drivers/video/mxc/mxc_hdmi.c
++++ b/drivers/video/mxc/mxc_hdmi.c
+@@ -208,6 +208,7 @@ struct mxc_hdmi *g_hdmi;
+ 
+ static bool hdmi_inited;
+ static bool hdcp_init;
++static int full_quant;
+ 
+ extern const struct fb_videomode mxc_cea_mode[64];
+ extern void mxc_hdmi_cec_handle(u16 cec_stat);
+@@ -1384,7 +1385,7 @@ static void hdmi_config_AVI(struct mxc_hdmi *hdmi)
+ 	 ********************************************/
+ 
+ 	val = HDMI_FC_AVICONF2_IT_CONTENT_NO_DATA | ext_colorimetry |
+-		HDMI_FC_AVICONF2_RGB_QUANT_DEFAULT |
++		full_quant |
+ 		HDMI_FC_AVICONF2_SCALING_NONE;
+ 	hdmi_writeb(val, HDMI_FC_AVICONF2);
+ 
+@@ -2508,9 +2509,10 @@ static int mxc_hdmi_disp_init(struct mxc_dispdrv_handle *disp,
+ 
+ 	hdmi->dft_mode_str = setting->dft_mode_str;
+ 	hdmi->default_bpp = setting->default_bpp;
+-	dev_dbg(&hdmi->pdev->dev, "%s - default mode %s bpp=%d\n",
+-		__func__, hdmi->dft_mode_str, hdmi->default_bpp);
++	dev_info(&hdmi->pdev->dev, "%s - default mode %s bpp=%d quant=%s\n",
++		__func__, hdmi->dft_mode_str, hdmi->default_bpp, (setting->full_quant & 0x08) ? "full" : (setting->full_quant & 0x04) ? "limited" : "default");
+ 
++	full_quant = setting->full_quant;
+ 	hdmi->fbi = setting->fbi;
+ 
+ 	hdmi_init_route(hdmi);
+diff --git a/drivers/video/mxc/mxc_ipuv3_fb.c b/drivers/video/mxc/mxc_ipuv3_fb.c
+index 49abe8c..8448510 100644
+--- a/drivers/video/mxc/mxc_ipuv3_fb.c
++++ b/drivers/video/mxc/mxc_ipuv3_fb.c
+@@ -1901,6 +1901,8 @@ static int mxcfb_dispdrv_init(struct platform_device *pdev,
+ 	setting.if_fmt = plat_data->interface_pix_fmt;
+ 	setting.dft_mode_str = plat_data->mode_str;
+ 	setting.default_bpp = plat_data->default_bpp;
++	setting.full_quant = plat_data->full_quant;
++
+ 	if (!setting.default_bpp)
+ 		setting.default_bpp = 16;
+ 	setting.fbi = fbi;
+@@ -1949,6 +1951,7 @@ static int mxcfb_option_setup(struct platform_device *pdev, struct fb_info *fbi)
+ 	char name[] = "mxcfb0";
+ 	uint32_t fb_pix_fmt = 0;
+ 
++	pdata->full_quant = 0x08; //HDMI_FC_AVICONF2_RGB_QUANT_FULL_RANGE
+ 	name[5] += pdev->id;
+ 	if (fb_get_options(name, &options)) {
+ 		dev_err(&pdev->dev, "Can't get fb option for %s!\n", name);
+@@ -2021,6 +2024,8 @@ static int mxcfb_option_setup(struct platform_device *pdev, struct fb_info *fbi)
+ 			fb_pix_fmt = bpp_to_pixfmt(pdata->default_bpp);
+ 			if (fb_pix_fmt)
+ 				pixfmt_to_var(fb_pix_fmt, &fbi->var);
++		} else if (!strncmp(opt, "crange=", 7)) {
++			pdata->full_quant = simple_strtoul(opt + 7, NULL, 0);
+ 		} else
+ 			fb_mode_str = opt;
+ 	}
+diff --git a/include/linux/ipu-v3.h b/include/linux/ipu-v3.h
+index c57d7de..c8690d0 100644
+--- a/include/linux/ipu-v3.h
++++ b/include/linux/ipu-v3.h
+@@ -747,6 +747,7 @@ struct ipuv3_fb_platform_data {
+ 	 * channel in bootloader.
+ 	 */
+ 	bool                            late_init;
++	int				full_quant;
+ };
+ 
+ #endif /* __LINUX_IPU_V3_H_ */

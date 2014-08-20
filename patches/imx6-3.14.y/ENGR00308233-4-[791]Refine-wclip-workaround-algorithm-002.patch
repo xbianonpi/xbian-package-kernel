@@ -1,0 +1,55 @@
+commit 3fae441a3b6a40e4981473bf967c121e22a9eda7
+Author: Loren Huang <b02279@freescale.com>
+Date:   Fri May 9 22:37:41 2014 +0800
+
+    ENGR00308233-4 [#791]Refine wclip workaround algorithm 003
+    
+    Vivante patch name:000e-more-refinements-for-wclip-issue
+    
+    Date: Apr 14, 2014
+    
+    Signed-off-by: Loren Huang <b02279@freescale.com>
+    Acked-by: Shawn Guo
+
+diff --git a/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_compiler.h b/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_compiler.h
+index 50eaadd..2c74401 100644
+--- a/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_compiler.h
++++ b/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_compiler.h
+@@ -524,6 +524,11 @@ struct _gcsHINT
+ #if TEMP_SHADER_PATCH
+ 	gctUINT32	pachedShaderIdentifier;
+ #endif
++
++#if gcdUSE_WCLIP_PATCH
++    /* Strict WClip match. */
++    gctBOOL     strictWClipMatch;
++#endif
+ };
+ 
+ #if TEMP_SHADER_PATCH
+@@ -3231,6 +3236,12 @@ gcATTRIBUTE_IsEnabled(
+ 	OUT gctBOOL * Enabled
+ 	);
+ 
++gceSTATUS
++gcATTRIBUTE_GetIndex(
++    IN gcATTRIBUTE Attribute,
++    OUT gctUINT16 * Index
++    );
++
+ /*******************************************************************************
+ **                              gcUNIFORM_GetType
+ ********************************************************************************
+@@ -3393,6 +3404,12 @@ gcUNIFORM_GetSampler(
+ 	OUT gctUINT32 * Sampler
+ 	);
+ 
++gceSTATUS
++gcUNIFORM_GetIndex(
++    IN gcUNIFORM Uniform,
++    OUT gctUINT16 * Index
++    );
++
+ /*******************************************************************************
+ **  gcUNIFORM_GetFormat
+ **
