@@ -16,7 +16,7 @@ index 127fd08..acad3f0 100644
  	int dev_id;
  	int disp_id;
 +
-+	bool full_quant;
++	int full_quant;
  };
  
  struct mxc_dispdrv_driver {
@@ -28,7 +28,7 @@ index e9b4010..e253d6f 100644
  
  static bool hdmi_inited;
  static bool hdcp_init;
-+static bool full_quant;
++static int full_quant;
  
  extern const struct fb_videomode mxc_cea_mode[64];
  extern void mxc_hdmi_cec_handle(u16 cec_stat);
@@ -37,7 +37,7 @@ index e9b4010..e253d6f 100644
  
  	val = HDMI_FC_AVICONF2_IT_CONTENT_NO_DATA | ext_colorimetry |
 -		HDMI_FC_AVICONF2_RGB_QUANT_DEFAULT |
-+		full_quant ? HDMI_FC_AVICONF2_RGB_QUANT_FULL_RANGE : HDMI_FC_AVICONF2_RGB_QUANT_DEFAULT |
++		full_quant |
  		HDMI_FC_AVICONF2_SCALING_NONE;
  	hdmi_writeb(val, HDMI_FC_AVICONF2);
  
@@ -48,7 +48,7 @@ index e9b4010..e253d6f 100644
 -	dev_dbg(&hdmi->pdev->dev, "%s - default mode %s bpp=%d\n",
 -		__func__, hdmi->dft_mode_str, hdmi->default_bpp);
 +	dev_info(&hdmi->pdev->dev, "%s - default mode %s bpp=%d quant=%s\n",
-+		__func__, hdmi->dft_mode_str, hdmi->default_bpp, setting->full_quant ? "full" : "std");
++		__func__, hdmi->dft_mode_str, hdmi->default_bpp, (setting->full_quant & 0x08) ? "full" : (setting->full_quant & 0x04) ? "limited" : "default");
  
 +	full_quant = setting->full_quant;
  	hdmi->fbi = setting->fbi;
@@ -71,18 +71,28 @@ index 49abe8c..8448510 100644
  	char name[] = "mxcfb0";
  	uint32_t fb_pix_fmt = 0;
  
-+	pdata->full_quant = true;
++	pdata->full_quant = 0x08; //HDMI_FC_AVICONF2_RGB_QUANT_FULL_RANGE
  	name[5] += pdev->id;
  	if (fb_get_options(name, &options)) {
  		dev_err(&pdev->dev, "Can't get fb option for %s!\n", name);
-@@ -2021,6 +2024,10 @@ static int mxcfb_option_setup(struct platform_device *pdev, struct fb_info *fbi)
+@@ -2021,6 +2024,8 @@ static int mxcfb_option_setup(struct platform_device *pdev, struct fb_info *fbi)
  			fb_pix_fmt = bpp_to_pixfmt(pdata->default_bpp);
  			if (fb_pix_fmt)
  				pixfmt_to_var(fb_pix_fmt, &fbi->var);
 +		} else if (!strncmp(opt, "crange=", 7)) {
-+			if (!strncmp(opt+7, "std", 3)) {
-+				pdata->full_quant = false;
-+			}
++			pdata->full_quant = simple_strtoul(opt + 7, NULL, 0);
  		} else
  			fb_mode_str = opt;
  	}
+diff --git a/include/linux/ipu-v3.h b/include/linux/ipu-v3.h
+index c57d7de..c8690d0 100644
+--- a/include/linux/ipu-v3.h
++++ b/include/linux/ipu-v3.h
+@@ -747,6 +747,7 @@ struct ipuv3_fb_platform_data {
+ 	 * channel in bootloader.
+ 	 */
+ 	bool                            late_init;
++	int				full_quant;
+ };
+ 
+ #endif /* __LINUX_IPU_V3_H_ */
