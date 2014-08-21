@@ -28,14 +28,14 @@ if [ $1 == "configure" ]; then
                 fi
             fi
 
-            rr=$(readlink -e /dev/root)
+            rr=$(readlink -e /dev/root); [ -z "$rr" ] && $(findmnt -o source / -n)
             if [ "$(blkid -o value -s TYPE $rr)" != btrfs ]; then
                 sed -i 's/setenv fstype btrfs/setenv fstype other/g' /boot/boot.scr.txt
             else
                 sed -i 's/setenv fstype.*/setenv fstype btrfs/g' /boot/boot.scr.txt
             fi
 
-            sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
+            [ -n "$rr" ] && sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
             if [ -e /boot/boot.scr.txt.user ]; then
                 res=$(grep video=mxcfb0:dev= /boot/boot.scr.txt.user); res=${res##*video=mxcfb0\:dev=}; res=${res%% *};
                 sed -i "s%hdmi,1920x1080M@60,if=RGB24%$res%" /boot/boot.scr.txt
