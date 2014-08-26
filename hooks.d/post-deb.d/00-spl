@@ -1,0 +1,103 @@
+DEST=$(readlink -f ../../../content/)
+ARCH=arm
+
+echo "Creating spl kernel package."
+
+kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+dver=$(cat $DEST/DEBIAN/control | grep Version: | awk '{print $2}')
+[ -z "$dver" ] && dver=$kver
+
+echo "... cleaning tmp dir"
+( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; )
+
+rpm2cpio .spl/spl-kmod-*.rpm > $DEST/spl-kmod.cpio
+cd $DEST; cpio -idvm 1>/dev/null 2>/dev/null < spl-kmod.cpio; cd ..
+rm $DEST/spl-kmod.cpio
+
+case $config_platform_branch in
+    imx6*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-spl-${kver%+}-armmp
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: make, gcc, linux-image-${kver%+}-armmp (= $dver)
+Conflicts: linux-spl-${kver%+}
+Maintainer: CurlyMo <development@xbian.org>
+Description: kernel spl modules ($kver)
+EOF
+        ;;
+    rpi*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-spl-${kver%+}
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: make, gcc, xbian-package-spl-modules (= $dver)
+Maintainer: CurlyMo <development@xbian.org>
+Description: kernel spl modules ($kver)
+EOF
+        ;;
+    *)
+        ;;
+esac
+
+cat<<EOF>$DEST/DEBIAN/postinst
+#!/bin/bash
+
+if [ \$1 = "configure" ]; then
+
+	depmod -a
+
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/postrm
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "purge" -o \$1 = "remove" ]; then
+
+	[ ! -d /lib/modules/$kver/extra/spl-kmod ] || rm -fr /lib/modules/$kver/extra/spl-kmod
+
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/preinst
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "install" -o \$1 = "upgrade" ]; then
+
+	true
+
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/prerm
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "remove" -o \$1 = "purge" ]; then
+	true
+fi
+
+if [ \$1 = "upgrade" ]; then
+
+        true
+
+fi
+EOF
+
+chmod +x $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN/postrm
+
+( cd $DEST/..; $SHELL $XBIANROOT/gen.package; )
