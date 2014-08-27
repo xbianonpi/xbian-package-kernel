@@ -24,7 +24,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: make, gcc, linux-image-${kver%+}-armmp (= $dver)
+Depends: linux-image-${kver%+}-armmp (= $dver)
 Conflicts: linux-spl-${kver%+}
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel spl modules ($kver)
@@ -39,7 +39,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: make, gcc, xbian-package-spl-modules (= $dver)
+Depends: xbian-package-spl-modules (= $dver)
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel spl modules ($kver)
 EOF
