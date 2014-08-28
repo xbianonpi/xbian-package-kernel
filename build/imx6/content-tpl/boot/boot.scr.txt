@@ -17,20 +17,6 @@ if test ${debug} != ""; then exit 1; fi
 
 load mmc 0:1 ${loadaddr} zImage
 
-if test ${board} = mx6-cubox-i; then
-    if test ${cpu} = 6SOLO || test ${cpu} = 6DL; then 
-        load mmc 0:1 ${fdt_addr} imx6dl-cubox-i.dtb
-    else 
-        load mmc 0:1 ${fdt_addr} imx6q-cubox-i.dtb
-    fi
-else
-    if test ${cpu} = 6SOLO || test ${cpu} = 6DL; then 
-        load mmc 0:1 ${fdt_addr} imx6dl-hummingboard.dtb
-    else 
-        load mmc 0:1 ${fdt_addr} imx6q-hummingboard.dtb
-    fi
-fi
-
 if load mmc 0:1 0x20000000 initramfs.gz; then
     setenv initram 0x20000000
 else
