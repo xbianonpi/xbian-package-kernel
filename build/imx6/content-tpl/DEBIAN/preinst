@@ -12,7 +12,8 @@ if [ $1 == "install" -o $1 == "upgrade" ]; then
         [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
 
         if [ "$(xbian-arch)" = iMX6 ]; then
-            cp /boot/boot.scr.txt /boot/boot.scr.txt.user
+            [ -e /boot/boot.scr.txt ] && cp /boot/boot.scr.txt /boot/boot.scr.txt.user
+            [ -e /boot/boot.scr.txt.xbian ] && cp /boot/boot.scr.txt.xbian /boot/boot.scr.txt.user
         fi
 
 fi

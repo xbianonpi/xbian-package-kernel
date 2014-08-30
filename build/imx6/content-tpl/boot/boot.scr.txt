@@ -1,10 +1,10 @@
 setenv fstype btrfs
 
-setenv baseconfig coherent_pool=1M rw ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 nohdparm splash dmfc=3
+setenv baseconfig console=ttymxc0,115200 coherent_pool=1M rw ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 nohdparm splash partswap dmfc=3
 
 setenv cmasize cma=256M
 if test ${cpu} = 6SOLO && test ${board} != mx6-cubox-i; then
-    setenv cmasize cma=16M
+    setenv cmasize cma=256M
 fi
 
 if test ${fstype} != btrfs; then
@@ -24,15 +24,19 @@ if test ${board} = mx6-cubox-i; then
         load mmc 0:1 ${fdt_addr} imx6q-cubox-i.dtb
     fi
 else
-    if test ${cpu} = 6SOLO || test ${cpu} = 6DL; then 
+    if test ${cpu} = 6SOLO; then
+        load mmc 0:1 ${fdt_addr} imx6sl-hummingboard.dtb
+    fi
+    if test ${cpu} = 6DL; then
         load mmc 0:1 ${fdt_addr} imx6dl-hummingboard.dtb
-    else 
+    fi
+    if test ${cpu} = 6Q; then
         load mmc 0:1 ${fdt_addr} imx6q-hummingboard.dtb
     fi
 fi
 
-if load mmc 0:1 0x20000000 initramfs.gz; then
-    setenv initram 0x20000000
+if load mmc 0:1 0x19000000 initramfs.gz; then
+    setenv initram 0x19000000
 else
     setenv initram "-"
 fi
