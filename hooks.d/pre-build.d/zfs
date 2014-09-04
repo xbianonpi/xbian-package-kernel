@@ -1,0 +1,20 @@
+
+[ "$config_platform_branch" != imx6 -a "$config_platform_branch" != imx6-51 -a "$config_platform_branch" != imx6-3.14.y ] && return 0 || :
+
+set -e
+
+if [ -d .zfs ]; then
+    cd .zfs
+
+    shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
+    sharem=$(git ls-remote -h git://github.com/zfsonlinux/zfs.git master | awk '{print $1}')
+
+    if [ $sharem != $shaloc ]; then
+        git clean -dfx  >/dev/null 2>&1
+        git reset --hard
+        git pull --depth=1 origin master
+	fi
+else
+    git clone -b master --depth=1 --single-branch git://github.com/zfsonlinux/zfs.git .zfs
+    cd .zfs
+fi
