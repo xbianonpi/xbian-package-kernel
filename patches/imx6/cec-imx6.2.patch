@@ -1,0 +1,29 @@
+commit 63a9786e7a80ed8be3ed3bbf34b166136a401925
+Author: Matus Kral <matuskral@me.com>
+Date:   Tue Sep 2 23:07:57 2014 +0200
+
+    added export for cec start/stop control from other IMX subsystems
+
+diff --git a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
+index 45d73ed..568f661 100644
+--- a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
++++ b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
+@@ -446,6 +446,18 @@ static long hdmi_cec_ioctl(struct file *filp, u_int cmd,
+ 	return ret;
+ }
+ 
++void hdmi_cec_start_device(void)
++{
++	hdmi_cec_ioctl(0, HDMICEC_IOC_STARTDEVICE, 0);
++}
++EXPORT_SYMBOL(hdmi_cec_start_device);
++
++void hdmi_cec_stop_device(void)
++{
++	hdmi_cec_ioctl(0, HDMICEC_IOC_STOPDEVICE, 0);
++}
++EXPORT_SYMBOL(hdmi_cec_stop_device);
++
+ /*!
+ * @brief Release function for vpu file operation
+ * @return  0 on success or negative error code on error

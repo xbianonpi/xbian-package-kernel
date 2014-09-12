@@ -1,0 +1,25 @@
+diff --git a/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi b/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi
+index edffb4c..efc2f61 100644
+--- a/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi
++++ b/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi
+@@ -5,10 +5,6 @@
+ #include "imx6qdl-microsom-ar8035.dtsi"
+ 
+ / {
+-	chosen {
+-		bootargs = "quiet console=ttymxc0,115200 root=/dev/mmcblk0p2 rw";
+-	};
+-
+ 	aliases {
+ 		mxcfb0 = &mxcfb1;
+ 	};
+@@ -101,8 +97,7 @@
+ };
+ 
+ &hdmi_video {
+-	fsl,phy_reg_vlev = <0x0294>;
+-	fsl,phy_reg_cksymtx = <0x800d>;
++	compatible = "fsl,imx6dl-hdmi-video";
+ 	status = "okay";
+ };
+ 

@@ -28,7 +28,7 @@ if [ $1 == "configure" ]; then
                 fi
             fi
 
-            rr=$(readlink -e /dev/root); [ -z "$rr" ] && $(findmnt -o source / -n)
+            [ -e /dev/root ] && rr=$(readlink -e /dev/root); [ -z "$rr" ] && $(findmnt -o source / -n)
             if [ "$(blkid -o value -s TYPE $rr)" != btrfs ]; then
                 sed -i 's/setenv fstype btrfs/setenv fstype other/g' /boot/boot.scr.txt
             else

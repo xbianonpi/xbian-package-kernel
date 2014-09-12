@@ -1,7 +1,11 @@
 
-[ "$config_platform_branch" != imx6 -a "$config_platform_branch" != imx6-51 ] && return 0 || :
-
-set -e
+case $config_platform_branch in
+    imx6*)
+        ;;
+    *)
+        return 0
+        ;;
+esac
 
 needcompile=yes
 
