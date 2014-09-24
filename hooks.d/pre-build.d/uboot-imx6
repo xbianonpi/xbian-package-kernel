@@ -17,8 +17,8 @@ if [ -d .uboot ]; then
 
     if [ $sharem != $shaloc ]; then
         git clean -dfx  >/dev/null 2>&1
-        git reset --hard
-        git pull --depth=1 origin imx6
+        git fetch
+        git reset --hard origin/imx6
     else
         needcompile=no
     fi

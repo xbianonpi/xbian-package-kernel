@@ -1,7 +1,7 @@
 DEST=$(readlink -f ../../../content/)
 ARCH=arm
 
-echo "Creating zfs kernel package."
+echo "Creating ZFS kernel package."
 
 kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 dver=$(cat $DEST/DEBIAN/control | grep Version: | awk '{print $2}')
@@ -10,10 +10,22 @@ dver=$(cat $DEST/DEBIAN/control | grep Version: | awk '{print $2}')
 echo "... cleaning tmp dir"
 ( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; )
 
-rpm2cpio .zfs/zfs-kmod-*.rpm > $DEST/zfs-kmod.cpio
-cd $DEST; cpio -idvm 1>/dev/null 2>/dev/null < zfs-kmod.cpio; cd ..
-rm $DEST/zfs-kmod.cpio
+echo "... compiling userland tools"
+cd .spl
+eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1
+cd ../.zfs
+eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1
 
+mv $DEST/lib/modules/$kver/extra  $DEST/lib/modules/$kver/extra.old
+mkdir -p $DEST/lib/modules/$kver/extra/zfs-all
+find $DEST/lib/modules/$kver/extra.old -iname \*.ko | xargs cp -t $DEST/lib/modules/$kver/extra/zfs-all
+rm -fr $DEST/lib/modules/$kver/extra.old
+rm -fr $DEST/usr
+
+eval export $config_build_env 2>/dev/null && eval export $config_build_env
+find $DEST -type f \( -executable -o -iname \*.so -o -iname \*.ko -o -iname \*.a \) -print0 | eval $config_build_env xargs -0 ${CROSS_COMPILE}strip --strip-unneeded -p 2>/dev/null || :
+
+echo "... creating package"
 case $config_platform_branch in
     imx6*)
 cat<<EOF>$DEST/DEBIAN/control
@@ -65,7 +77,7 @@ kver=$kver
 
 if [ \$1 = "purge" -o \$1 = "remove" ]; then
 
-	[ ! -d /lib/modules/$kver/extra/zfs-kmod ] || rm -fr /lib/modules/$kver/extra/zfs-kmod
+	[ ! -d /lib/modules/$kver/extra/zfs-all ] || rm -fr /lib/modules/$kver/extra/zfs-all
 
 fi
 EOF

@@ -1,2 +1,7 @@
 
+ttmp=$(mktemp -d -u)
+mkdir -p $ttmp
+cp -a .config $ttmp
 eval $config_build_env make olddefconfig
+diff .config $ttmp/.config >/dev/null && cp -a $ttmp/.config ./ || :
+[ -z "$ttmp" ] || rm -fr $ttmp

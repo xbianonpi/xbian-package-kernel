@@ -1,195 +1,44 @@
-
-[ "$config_platform_branch" != imx6 -a "$config_platform_branch" != imx6-51 -a "$config_platform_branch" != imx6-3.14.y ] && return 0 || :
+case $config_platform_branch in
+    imx6*)
+	;;
+    *)
+	return 0
+	;;
+esac
 
 set -e
 
-if [ -d .zfs ]; then
-	echo "BUILDING ZFS... Please wait" 
+if [ -d .zfs -a -d .spl ]; then
 
-	cd .zfs
-	runconfigure=0
+	for d in .spl .zfs; do (
+	echo "BUILDING $d... Please wait" 
+	cd $d; runconfigure=0
+	if [ ! -e ./configure ]; then
+		echo ...running autogen.sh
+		./autogen.sh >/dev/null || :
+		runconfigure=1
+	fi
 	if [ -e configure ]; then
 		if [ -e Makefile ]; then
-			[ "$( find ./ -maxdepth 1 -iname Makefile ! -newer configure | grep -c .; )" -gt 0 ] && runconfigure=1 || :
+			[ "$( find ./ -maxdepth 1 -iname Makefile ! -newer ../.config | grep -c .; )" -gt 0 ] && runconfigure=1 || :
+			[ "$( find ./ -maxdepth 1 -iname Makefile ! -newer ./configure | grep -c .; )" -gt 0 ] && runconfigure=1 || :
 		else
 			runconfigure=1
 		fi
-	else
-		runconfigure=1
 	fi
+	[ ! -e .force.recompile ] || { runconfigure=1; rm -f .force.recompile; }
+	( export $config_build_env 2>/dev/null; ) && export $config_build_env || :
+
+	extraprm=''
+	[ -z "$CROSS_COMPILE" ] || extraprm="--host=${CROSS_COMPILE%-} --target=${CROSS_COMPILE%-}"
+
 	if [ $runconfigure -eq 1 ]; then
-		if [ ! -f configure ]; then
-			./autogen.sh
-		fi
-		./configure --with-config=user
+		echo ...running configure
+		eval $config_build_env CC=${CROSS_COMPILE}gcc ./configure $extraprm --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) --with-spl=$(readlink -f ../.spl) --build=$(uname -m) >/dev/null
 	fi
 
-	if [ -f rpm/generic/zfs.spec ]; then
-		if [ `grep -c armv7l rpm/generic/zfs.spec` -eq 0 ]; then
-			sed -i 's/x86_64/x86_64 armv7l/g' rpm/generic/zfs.spec
-		fi
-	fi
-	if [ `grep -c armv7l rpm/generic/zfs.spec.in` -eq 0 ]; then
-		sed -i 's/x86_64/x86_64 armv7l/g' rpm/generic/zfs.spec.in
-	fi
-
-	if [ `grep -c armvl7 rpm/generic/zfs-kmod.spec` -eq 0 ]; then
-
-cat <<\EOF > /tmp/zfs-kmod.spec.patch
---- generic/rpm/zfs-kmod.spec	2014-08-26 17:03:26.235215280 +0200
-+++ generic/rpm/zfs-kmod.spec	2014-08-26 17:07:51.894883000 +0200
-@@ -1,16 +1,19 @@
- %define module  zfs
-+%define _arch	armvl7
-+%define kmodinstdir_prefix	/lib/modules/
-+%define kmodinstdir_postfix	/extra/zfs-kmod/
- 
- %if !%{defined ksrc}
- %if 0%{?rhel}%{?fedora}
- %define ksrc    ${kernel_version##*___}
- %else
- %define ksrc    "$( \
--        if [ -e "/usr/src/linux-${kernel_version%%___*}" ]; then \
--            echo "/usr/src/linux-${kernel_version%%___*}"; \
--        elif [ -e "/lib/modules/${kernel_version%%___*}/source" ]; then \
--            echo "/lib/modules/${kernel_version%%___*}/source"; \
-+        if [ -e "@LINUX@" ]; then \
-+            echo "@LINUX@"; \
-+        elif [ -e "@LINUX@" ]; then \
-+            echo "@LINUX@"; \
-         else \
--            echo "/lib/modules/${kernel_version%%___*}/build"; \
-+            echo "@LINUX@"; \
-         fi)"
- %endif
- %endif
-@@ -20,10 +23,10 @@
- %define kobj    ${kernel_version##*___}
- %else
- %define kobj    "$( \
--        if [ -e "/usr/src/linux-${kernel_version%%___*}" ]; then \
--            echo "/usr/src/linux-${kernel_version%%___*}"; \
-+        if [ -e "@LINUX@" ]; then \
-+            echo "@LINUX@"; \
-         else \
--            echo "/lib/modules/${kernel_version%%___*}/build"; \
-+            echo "@LINUX@"; \
-         fi)"
- %endif
- %endif
-@@ -100,12 +103,6 @@
- This package contains the ZFS kernel modules.
- 
- %prep
--# Error out if there was something wrong with kmodtool.
--%{?kmodtool_check}
--
--# Print kmodtool output for debugging purposes:
--bash %{SOURCE10}  --target %{_target_cpu} %{?repo:--repo %{?repo}} --kmodname %{name} %{?buildforkernels:--%{buildforkernels}} --devel %{?prefix:--prefix "%{?prefix}"} %{?kernels:--for-kernels "%{?kernels}"} %{?kernelbuildroot:--buildroot "%{?kernelbuildroot}"} 2>/dev/null
--
- %if %{with debug}
-     %define debug --enable-debug
- %else
-@@ -128,15 +125,15 @@
- %endif
- 
- %if %{defined require_spldir}
--%define spldir %{require_spldir}
-+%define spldir @LINUX@/.spl
- %else
--%define spldir %{_usrsrc}/spl-%{splver}
-+%define spldir @LINUX@/.spl
- %endif
- 
- %if %{defined require_splobj}
--%define splobj %{require_splobj}
-+%define splobj @LINUX@/.spl
- %else
--%define splobj %{spldir}/${kernel_version%%___*}
-+%define splobj @LINUX@/.spl
- %endif
- 
- 
-@@ -145,40 +142,34 @@
- 
- %setup -q -c -T -a 0
- 
--for kernel_version in %{?kernel_versions}; do
--    %{__mkdir} _kmod_build_${kernel_version%%___*}
--done
-+%{__mkdir} _kmod_build_@VERSION@
-+
- 
- %build
--for kernel_version in %{?kernel_versions}; do
--    cd _kmod_build_${kernel_version%%___*}
--    %configure \
--        --with-config=kernel \
--        --with-linux=%{ksrc} \
--        --with-linux-obj=%{kobj} \
--        --with-spl="%{spldir}" \
--        --with-spl-obj="%{splobj}" \
--        %{debug} \
--        %{debug_dmu_tx}
--    make %{?_smp_mflags}
--    cd ..
--done
-+cd _kmod_build_@VERSION@
-+%configure \
-+	--with-config=kernel \
-+	--with-linux=%{ksrc} \
-+	--with-linux-obj=%{kobj} \
-+	--with-spl="%{spldir}" \
-+	--with-spl-obj="%{splobj}" \
-+	%{debug} \
-+	%{debug_dmu_tx}
-+make %{?_smp_mflags}
-+cd ..
- 
- 
- %install
- rm -rf ${RPM_BUILD_ROOT}
- 
- # Relies on the kernel 'modules_install' make target.
--for kernel_version in %{?kernel_versions}; do
--    cd _kmod_build_${kernel_version%%___*}
--    make install \
--        DESTDIR=${RPM_BUILD_ROOT} \
--        %{?prefix:INSTALL_MOD_PATH=%{?prefix}} \
--        INSTALL_MOD_DIR=%{kmodinstdir_postfix}
--    cd ..
--done
-+cd _kmod_build_@VERSION@
-+make install \
-+	DESTDIR=${RPM_BUILD_ROOT} \
-+	%{?prefix:INSTALL_MOD_PATH=%{?prefix}} \
-+	INSTALL_MOD_DIR=%{kmodinstdir_postfix}
-+cd ..
- chmod u+x ${RPM_BUILD_ROOT}%{kmodinstdir_prefix}/*/extra/*/*/*
--%{?akmod_install}
- 
- 
- %clean
-@@ -191,3 +182,8 @@
- - Released 0.6.2-1
- * Fri Mar 22 2013 Brian Behlendorf <behlendorf1@llnl.gov> - 0.6.1-1
- - First official stable release.
-+
-+%files
-+%defattr(-,root,root,-)
-+/lib/modules/@VERSION@
-+/usr/src/zfs-0.6.3
-\ No newline at end of file 
-EOF
-
-		patch -p1 rpm/generic/zfs-kmod.spec < /tmp/zfs-kmod.spec.patch
-		version=$(sed -ne 's/.*"\(.*\)"/\1/p' ../include/generated/utsrelease.h);
-		sed -i "s:@VERSION@:$version:g" rpm/generic/zfs-kmod.spec
-	
-		linux=$(dirname $(pwd));
-		sed -i "s:@LINUX@:$linux:g" rpm/generic/zfs-kmod.spec
-	fi
-
-	make rpm-kmod
-
+	cd module
+	echo ...running make
+	eval $config_build_env CC=${CROSS_COMPILE}gcc make >/dev/null
+	); done
 fi
