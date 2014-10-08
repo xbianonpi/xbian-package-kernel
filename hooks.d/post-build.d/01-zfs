@@ -34,11 +34,11 @@ if [ -d .zfs -a -d .spl ]; then
 
 	if [ $runconfigure -eq 1 ]; then
 		echo ...running configure
-		eval $config_build_env CC=${CROSS_COMPILE}gcc ./configure $extraprm --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) --with-spl=$(readlink -f ../.spl) --build=$(uname -m) >/dev/null
+		eval $config_build_env CC=${CROSS_COMPILE}gcc ./configure $extraprm --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) --with-spl=$(readlink -f ../.spl) --build=$(uname -m)
 	fi
 
 	cd module
 	echo ...running make
-	eval $config_build_env CC=${CROSS_COMPILE}gcc make >/dev/null
+	eval $config_build_env CC=${CROSS_COMPILE}gcc make
 	); done
 fi
