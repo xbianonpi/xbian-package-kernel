@@ -1,0 +1,73 @@
+From 468497ef1ec99087200799d22ef47a97a3d5583a Mon Sep 17 00:00:00 2001
+From: Takashi Iwai <tiwai@suse.de>
+Date: Fri, 2 May 2014 18:17:06 +0200
+Subject: [PATCH] ALSA: usb-audio: Fix deadlocks at resuming
+
+The recent addition of the USB audio mixer suspend/resume may lead to
+deadlocks when the driver tries to call usb_autopm_get_interface()
+recursively, since the function tries to sync with the finish of the
+other calls.  For avoiding it, introduce a flag indicating the resume
+operation and avoids the recursive usb_autopm_get_interface() calls
+during the resume.
+
+Reported-and-tested-by: Bryan Quigley <gquigs@gmail.com>
+Signed-off-by: Takashi Iwai <tiwai@suse.de>
+---
+ sound/usb/card.c     |    7 +++++--
+ sound/usb/usbaudio.h |    1 +
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/sound/usb/card.c b/sound/usb/card.c
+index c95f862..e9fe70a 100644
+--- a/sound/usb/card.c
++++ b/sound/usb/card.c
+@@ -649,7 +649,7 @@ int snd_usb_autoresume(struct snd_usb_audio *chip)
+ 	int err = -ENODEV;
+ 
+ 	down_read(&chip->shutdown_rwsem);
+-	if (chip->probing)
++	if (chip->probing && chip->in_pm)
+ 		err = 0;
+ 	else if (!chip->shutdown)
+ 		err = usb_autopm_get_interface(chip->pm_intf);
+@@ -661,7 +661,7 @@ int snd_usb_autoresume(struct snd_usb_audio *chip)
+ void snd_usb_autosuspend(struct snd_usb_audio *chip)
+ {
+ 	down_read(&chip->shutdown_rwsem);
+-	if (!chip->shutdown && !chip->probing)
++	if (!chip->shutdown && !chip->probing && !chip->in_pm)
+ 		usb_autopm_put_interface(chip->pm_intf);
+ 	up_read(&chip->shutdown_rwsem);
+ }
+@@ -710,6 +710,8 @@ static int __usb_audio_resume(struct usb_interface *intf, bool reset_resume)
+ 		return 0;
+ 	if (--chip->num_suspended_intf)
+ 		return 0;
++
++	chip->in_pm = 1;
+ 	/*
+ 	 * ALSA leaves material resumption to user space
+ 	 * we just notify and restart the mixers
+@@ -725,6 +727,7 @@ static int __usb_audio_resume(struct usb_interface *intf, bool reset_resume)
+ 	chip->autosuspended = 0;
+ 
+ err_out:
++	chip->in_pm = 0;
+ 	return err;
+ }
+ 
+diff --git a/sound/usb/usbaudio.h b/sound/usb/usbaudio.h
+index bc43bca..f13bd00 100644
+--- a/sound/usb/usbaudio.h
++++ b/sound/usb/usbaudio.h
+@@ -40,6 +40,7 @@ struct snd_usb_audio {
+ 	struct rw_semaphore shutdown_rwsem;
+ 	unsigned int shutdown:1;
+ 	unsigned int probing:1;
++	unsigned int in_pm:1;
+ 	unsigned int autosuspended:1;	
+ 	unsigned int txfr_quirk:1; /* Subframe boundaries on transfers */
+ 	
+-- 
+1.7.1
+

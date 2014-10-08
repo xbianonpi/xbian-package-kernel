@@ -1,0 +1,11 @@
+--- a/drivers/video/console/fbcon.c
++++ b/drivers/video/console/fbcon.c
+@@ -3203,6 +3203,8 @@
+ 		if (!fb_display[i].mode)
+ 			continue;
+ 		vc = vc_cons[i].d;
++		if (!vc)
++			continue;
+ 		display_to_var(&var, &fb_display[i]);
+ 		mode = fb_find_nearest_mode(fb_display[i].mode,
+ 					    &info->modelist);

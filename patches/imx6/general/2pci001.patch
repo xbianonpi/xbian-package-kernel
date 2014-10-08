@@ -1,0 +1,43 @@
+commit c3c460bc207a15a045525b5d8bae4f221670a395
+Author: Sean Cross <xobs@kosagi.com>
+Date:   Sun Sep 7 20:57:37 2014 +0200
+
+    PCI: imx6: bring back more bits form upstream
+    
+    This brings back the  imx6_pcie_assert_core_reset() function
+    that was part of the original driver accepted upstream.
+    
+    commit: bb38919ec56e0758c3ae56dfc091dcde1391353e
+
+diff --git a/drivers/pci/host/pci-imx6.c b/drivers/pci/host/pci-imx6.c
+index 70fb6a5..ee90238 100644
+--- a/drivers/pci/host/pci-imx6.c
++++ b/drivers/pci/host/pci-imx6.c
+@@ -226,6 +226,18 @@ static int imx6q_pcie_abort_handler(unsigned long addr,
+ 	return 0;
+ }
+ 
++static int imx6_pcie_assert_core_reset(struct pcie_port *pp)
++{
++        struct imx6_pcie *imx6_pcie = to_imx6_pcie(pp);
++
++        regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
++                        IMX6Q_GPR1_PCIE_TEST_PD, 1 << 18);
++        regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
++                        IMX6Q_GPR1_PCIE_REF_CLK_EN, 0 << 16);
++
++        return 0;
++}
++
+ static int imx6_pcie_deassert_core_reset(struct pcie_port *pp)
+ {
+ 	struct imx6_pcie *imx6_pcie = to_imx6_pcie(pp);
+@@ -423,6 +435,8 @@ static irqreturn_t imx_pcie_msi_irq_handler(int irq, void *arg)
+ 
+ static void imx6_pcie_host_init(struct pcie_port *pp)
+ {
++	imx6_pcie_assert_core_reset(pp);
++
+ 	imx6_pcie_init_phy(pp);
+ 
+ 	imx6_pcie_deassert_core_reset(pp);
