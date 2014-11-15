@@ -1,0 +1,153 @@
+commit 0709c59a8d6f6811f3b90c066edd6c7f45bb5183
+Author: Daniel Matuschek <info@crazy-audio.com>
+Date:   Fri Jul 25 07:08:09 2014 +0200
+
+    Configure GPIOs for I2S based on revision/card settings
+    
+    With RPi model B+, assignment of the I2S GPIO pins has changed.
+    This patch uses the board revision to auto-detect the GPIOs used
+    for I2S. It also allows sound card drivers to set the GPIOs that
+    should be used. This is especially important with the Compute
+    Module.
+
+diff --git a/sound/soc/bcm/bcm2708-i2s.c b/sound/soc/bcm/bcm2708-i2s.c
+index 9976571..905f076 100644
+--- a/sound/soc/bcm/bcm2708-i2s.c
++++ b/sound/soc/bcm/bcm2708-i2s.c
+@@ -31,6 +31,8 @@
+  * General Public License for more details.
+  */
+ 
++#include "bcm2708-i2s.h"
++
+ #include <linux/init.h>
+ #include <linux/module.h>
+ #include <linux/device.h>
+@@ -46,6 +48,8 @@
+ #include <sound/soc.h>
+ #include <sound/dmaengine_pcm.h>
+ 
++#include <asm/system_info.h>
++
+ /* Clock registers */
+ #define BCM2708_CLK_PCMCTL_REG  0x00
+ #define BCM2708_CLK_PCMDIV_REG  0x04
+@@ -163,6 +167,9 @@ static const unsigned int bcm2708_clk_freq[BCM2708_CLK_SRC_HDMI+1] = {
+ #define BCM2708_DMA_DREQ_PCM_TX		2
+ #define BCM2708_DMA_DREQ_PCM_RX		3
+ 
++/* I2S pin configuration */
++static int bcm2708_i2s_gpio=BCM2708_I2S_GPIO_AUTO;
++
+ /* General device struct */
+ struct bcm2708_i2s_dev {
+ 	struct device				*dev;
+@@ -174,6 +181,12 @@ struct bcm2708_i2s_dev {
+ 	struct regmap *clk_regmap;
+ };
+ 
++void bcm2708_i2s_set_gpio(int gpio) {
++	bcm2708_i2s_gpio=gpio;
++}
++EXPORT_SYMBOL(bcm2708_i2s_set_gpio);
++
++
+ static void bcm2708_i2s_start_clock(struct bcm2708_i2s_dev *dev)
+ {
+ 	/* Start the clock if in master mode */
+@@ -305,7 +318,6 @@ static int bcm2708_i2s_set_dai_bclk_ratio(struct snd_soc_dai *dai,
+ 	return 0;
+ }
+ 
+-
+ static void bcm2708_i2s_setup_gpio(void)
+ {
+ 	/*
+@@ -318,14 +330,41 @@ static void bcm2708_i2s_setup_gpio(void)
+ #define SET_GPIO_ALT(g,a) *(gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
+ 
+ 	unsigned int *gpio;
+-	int pin;
++	int pin,pinconfig,startpin,alt;
++
+ 	gpio = ioremap(GPIO_BASE, SZ_16K);
+ 
+-	/* SPI is on GPIO 7..11 */
+-	for (pin = 28; pin <= 31; pin++) {
+-		INP_GPIO(pin);		/* set mode to GPIO input first */
+-		SET_GPIO_ALT(pin, 2);	/* set mode to ALT 0 */
++	/* SPI is on different GPIOs on different boards */
++        /* for Raspberry Pi B+, this is pin GPIO18-21, for original on 28-31 */
++	if (bcm2708_i2s_gpio==BCM2708_I2S_GPIO_AUTO) {	
++		if (system_rev >= 0x10) {
++			/* Model B+ */
++			pinconfig=BCM2708_I2S_GPIO_PIN18;
++		} else {
++			/* original */
++			pinconfig=BCM2708_I2S_GPIO_PIN28;
++		}
++	} else {
++		pinconfig=bcm2708_i2s_gpio;
++	}
++
++	if (pinconfig==BCM2708_I2S_GPIO_PIN18) {
++		startpin=18;
++		alt=BCM2708_I2S_GPIO_PIN18_ALT;
++	} else if (pinconfig==BCM2708_I2S_GPIO_PIN28) {
++		startpin=28;
++		alt=BCM2708_I2S_GPIO_PIN28_ALT;
++	} else {
++		printk(KERN_INFO "Can't configure I2S GPIOs, unknown pin mode for I2S: %i\n",pinconfig);
++		return;
++	}	
++
++	/* configure I2S pins to correct ALT mode */
++	for (pin = startpin; pin <= startpin+3; pin++) {
++                INP_GPIO(pin);		/* set mode to GPIO input first */
++                SET_GPIO_ALT(pin, alt);	/* set mode to ALT  */
+ 	}
++	
+ #undef INP_GPIO
+ #undef SET_GPIO_ALT
+ }
+diff --git a/sound/soc/bcm/bcm2708-i2s.h b/sound/soc/bcm/bcm2708-i2s.h
+new file mode 100644
+index 0000000..94fed6a
+--- /dev/null
++++ b/sound/soc/bcm/bcm2708-i2s.h
+@@ -0,0 +1,35 @@
++/*
++ * I2S configuration for sound cards. 
++ *
++ * Copyright (c) 2014 Daniel Matuschek <daniel@hifiberry.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
++ */
++
++#ifndef BCM2708_I2S_H
++#define BCM2708_I2S_H
++
++/* I2S pin assignment */
++#define BCM2708_I2S_GPIO_AUTO	0
++#define BCM2708_I2S_GPIO_PIN18	1
++#define BCM2708_I2S_GPIO_PIN28	2
++
++/* Alt mode to enable I2S */
++#define BCM2708_I2S_GPIO_PIN18_ALT	0
++#define BCM2708_I2S_GPIO_PIN28_ALT	2
++
++extern void bcm2708_i2s_set_gpio(int gpio);
++
++#endif
