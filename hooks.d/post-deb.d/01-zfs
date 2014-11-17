@@ -12,7 +12,7 @@ dver=$(cat $DEST/DEBIAN/control | grep Version: | awk '{print $2}')
 echo "... cleaning tmp dir"
 ( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; )
 
-echo "... compiling userland tools"
+echo "... installing kernel modules"
 cd .spl
 eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1
 cd ../.zfs
