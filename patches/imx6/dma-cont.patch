@@ -11,7 +11,7 @@ index 3ed37b4..63277bc 100644
  void dma_contiguous_early_fixup(phys_addr_t base, unsigned long size);
  
 diff --git a/drivers/base/dma-contiguous.c b/drivers/base/dma-contiguous.c
-index 0ca5442..165c2c2 100644
+index 0ca5442..dd1bb79 100644
 --- a/drivers/base/dma-contiguous.c
 +++ b/drivers/base/dma-contiguous.c
 @@ -49,7 +49,7 @@ struct cma *dma_contiguous_default_area;
@@ -67,7 +67,7 @@ index 0ca5442..165c2c2 100644
  	WARN_ON_ONCE(!pfn_valid(pfn));
  	zone = page_zone(pfn_to_page(pfn));
  
-@@ -153,92 +160,53 @@ static __init int cma_activate_area(unsigned long base_pfn, unsigned long count)
+@@ -153,92 +160,55 @@ static __init int cma_activate_area(unsigned long base_pfn, unsigned long count)
  		}
  		init_cma_reserved_pageblock(pfn_to_page(base_pfn));
  	} while (--i);
@@ -90,14 +90,14 @@ index 0ca5442..165c2c2 100644
 -	cma->base_pfn = base_pfn;
 -	cma->count = count;
 -	cma->bitmap = kzalloc(bitmap_size, GFP_KERNEL);
- 
+-
 -	if (!cma->bitmap)
 -		goto no_mem;
 -
 -	ret = cma_activate_area(base_pfn, count);
 -	if (ret)
 -		goto error;
--
+ 
 -	pr_debug("%s: returned %p\n", __func__, (void *)cma);
 -	return cma;
 -
@@ -122,10 +122,10 @@ index 0ca5442..165c2c2 100644
  {
 -	struct cma_reserved *r = cma_reserved;
 -	unsigned i = cma_reserved_count;
--
--	pr_debug("%s()\n", __func__);
 +	int i;
  
+-	pr_debug("%s()\n", __func__);
+-
 -	for (; i; --i, ++r) {
 -		struct cma *cma;
 -		cma = cma_create_area(PFN_DOWN(r->start),
@@ -171,6 +171,8 @@ index 0ca5442..165c2c2 100644
 -	struct cma_reserved *r = &cma_reserved[cma_reserved_count];
 +	struct cma *cma = &cma_areas[cma_area_count];
  	phys_addr_t alignment;
++	phys_addr_t memblock_end = memblock_end_of_DRAM();
++	phys_addr_t highmem_start = __pa(high_memory);
 +	int ret = 0;
  
  	pr_debug("%s(size %lx, base %08lx, limit %08lx)\n", __func__,
@@ -183,7 +185,29 @@ index 0ca5442..165c2c2 100644
  		pr_err("Not enough slots for CMA reserved regions!\n");
  		return -ENOSPC;
  	}
-@@ -256,7 +224,7 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
+@@ -252,11 +222,29 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
+ 	size = ALIGN(size, alignment);
+ 	limit &= ~(alignment - 1);
+ 
++	/*
++	 * adjust limit to avoid crossing low/high memory boundary for
++	 * automatically allocated regions
++	 */
++	if (((limit == 0 || limit > memblock_end) &&
++	     (memblock_end - size < highmem_start &&
++	      memblock_end > highmem_start)) ||
++	    (limit > highmem_start && limit - size < highmem_start)) {
++	        limit = highmem_start;
++	}
++
++	if (base < highmem_start && base+size > highmem_start) {
++	        ret = -EINVAL;
++	        pr_err("Region at %08lx defined on low/high memory boundary (%08lx)\n",
++	                (unsigned long)base, (unsigned long)highmem_start);
++	        goto err;
++	}
++
+ 	/* Reserve memory */
  	if (base) {
  		if (memblock_is_region_reserved(base, size) ||
  		    memblock_reserve(base, size) < 0) {
@@ -192,7 +216,7 @@ index 0ca5442..165c2c2 100644
  			goto err;
  		}
  	} else {
-@@ -266,7 +234,7 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
+@@ -266,7 +254,7 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
  		 */
  		phys_addr_t addr = __memblock_alloc_base(size, alignment, limit);
  		if (!addr) {
@@ -201,7 +225,7 @@ index 0ca5442..165c2c2 100644
  			goto err;
  		} else {
  			base = addr;
-@@ -277,10 +245,11 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
+@@ -277,10 +265,11 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
  	 * Each reserved area must be initialised later, when more kernel
  	 * subsystems (like slab allocator) are available.
  	 */
@@ -217,7 +241,7 @@ index 0ca5442..165c2c2 100644
  	pr_info("CMA: reserved %ld MiB at %08lx\n", (unsigned long)size / SZ_1M,
  		(unsigned long)base);
  
-@@ -289,7 +258,7 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
+@@ -289,7 +278,7 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
  	return 0;
  err:
  	pr_err("CMA: failed to reserve %ld MiB\n", (unsigned long)size / SZ_1M);
@@ -226,6 +250,40 @@ index 0ca5442..165c2c2 100644
  }
  
  /**
+diff --git a/include/asm-generic/dma-contiguous.h b/include/asm-generic/dma-contiguous.h
+deleted file mode 100644
+index 294b1e7..0000000
+--- a/include/asm-generic/dma-contiguous.h
++++ /dev/null
+@@ -1,28 +0,0 @@
+-#ifndef ASM_DMA_CONTIGUOUS_H
+-#define ASM_DMA_CONTIGUOUS_H
+-
+-#ifdef __KERNEL__
+-#ifdef CONFIG_CMA
+-
+-#include <linux/device.h>
+-#include <linux/dma-contiguous.h>
+-
+-static inline struct cma *dev_get_cma_area(struct device *dev)
+-{
+-	if (dev && dev->cma_area)
+-		return dev->cma_area;
+-	return dma_contiguous_default_area;
+-}
+-
+-static inline void dev_set_cma_area(struct device *dev, struct cma *cma)
+-{
+-	if (dev)
+-		dev->cma_area = cma;
+-	if (!dev && !dma_contiguous_default_area)
+-		dma_contiguous_default_area = cma;
+-}
+-
+-#endif
+-#endif
+-
+-#endif
 diff --git a/include/linux/dma-contiguous.h b/include/linux/dma-contiguous.h
 index 01b5c84..c1400d6 100644
 --- a/include/linux/dma-contiguous.h

@@ -1,9 +1,9 @@
 --- a/drivers/staging/media/lirc/Kconfig
 +++ b/drivers/staging/media/lirc/Kconfig
 @@ -38,6 +38,18 @@
-        help
-          Driver for Homebrew Parallel Port Receivers
-
+ 	help
+ 	  Driver for Homebrew Parallel Port Receivers
+ 
 +config LIRC_HB
 +       tristate "Homebrew GPIO Port Receiver/Transmitter for the Hummingboard"
 +       depends on LIRC
@@ -17,8 +17,8 @@
 +         Homebrew XBOX Receiver for the Hummingboard
 +
  config LIRC_SASEM
-        tristate "Sasem USB IR Remote"
-        depends on LIRC && USB
+ 	tristate "Sasem USB IR Remote"
+ 	depends on LIRC && USB
 --- a/drivers/staging/media/lirc/Makefile
 +++ b/drivers/staging/media/lirc/Makefile
 @@ -8,5 +8,7 @@

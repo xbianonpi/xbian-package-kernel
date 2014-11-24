@@ -125,7 +125,7 @@ index df7997ad..9c34890 100644
 -	clk_prepare_enable(gmipi_csi2->dphy_clk);
 +	clk_prepare_enable(gmipi_csi2->clks[DPHY_CLK]);
  	/* get mipi csi2 dphy version */
- 	mipi_csi2_dphy_ver = mipi_csi2_read(gmipi_csi2, CSI2_VERSION);
+ 	mipi_csi2_dphy_ver = mipi_csi2_read(gmipi_csi2, MIPI_CSI2_VERSION);
  
 -	clk_disable_unprepare(gmipi_csi2->dphy_clk);
 +	clk_disable_unprepare(gmipi_csi2->clks[DPHY_CLK]);

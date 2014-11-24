@@ -1,0 +1,3113 @@
+diff --git a/sound/core/compress_offload.c b/sound/core/compress_offload.c
+index 1979993..3fdf998 100644
+--- a/sound/core/compress_offload.c
++++ b/sound/core/compress_offload.c
+@@ -133,7 +133,7 @@ static int snd_compr_open(struct inode *inode, struct file *f)
+ 		kfree(data);
+ 	}
+ 	snd_card_unref(compr->card);
+-	return 0;
++	return ret;
+ }
+ 
+ static int snd_compr_free(struct inode *inode, struct file *f)
+diff --git a/sound/core/control.c b/sound/core/control.c
+index d8aa206..98a29b2 100644
+--- a/sound/core/control.c
++++ b/sound/core/control.c
+@@ -289,6 +289,10 @@ static bool snd_ctl_remove_numid_conflict(struct snd_card *card,
+ {
+ 	struct snd_kcontrol *kctl;
+ 
++	/* Make sure that the ids assigned to the control do not wrap around */
++	if (card->last_numid >= UINT_MAX - count)
++		card->last_numid = 0;
++
+ 	list_for_each_entry(kctl, &card->controls, list) {
+ 		if (kctl->id.numid < card->last_numid + 1 + count &&
+ 		    kctl->id.numid + kctl->count > card->last_numid + 1) {
+@@ -331,6 +335,7 @@ int snd_ctl_add(struct snd_card *card, struct snd_kcontrol *kcontrol)
+ {
+ 	struct snd_ctl_elem_id id;
+ 	unsigned int idx;
++	unsigned int count;
+ 	int err = -EINVAL;
+ 
+ 	if (! kcontrol)
+@@ -338,6 +343,9 @@ int snd_ctl_add(struct snd_card *card, struct snd_kcontrol *kcontrol)
+ 	if (snd_BUG_ON(!card || !kcontrol->info))
+ 		goto error;
+ 	id = kcontrol->id;
++	if (id.index > UINT_MAX - kcontrol->count)
++		goto error;
++
+ 	down_write(&card->controls_rwsem);
+ 	if (snd_ctl_find_id(card, &id)) {
+ 		up_write(&card->controls_rwsem);
+@@ -359,8 +367,9 @@ int snd_ctl_add(struct snd_card *card, struct snd_kcontrol *kcontrol)
+ 	card->controls_count += kcontrol->count;
+ 	kcontrol->id.numid = card->last_numid + 1;
+ 	card->last_numid += kcontrol->count;
++	count = kcontrol->count;
+ 	up_write(&card->controls_rwsem);
+-	for (idx = 0; idx < kcontrol->count; idx++, id.index++, id.numid++)
++	for (idx = 0; idx < count; idx++, id.index++, id.numid++)
+ 		snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_ADD, &id);
+ 	return 0;
+ 
+@@ -389,6 +398,7 @@ int snd_ctl_replace(struct snd_card *card, struct snd_kcontrol *kcontrol,
+ 		    bool add_on_replace)
+ {
+ 	struct snd_ctl_elem_id id;
++	unsigned int count;
+ 	unsigned int idx;
+ 	struct snd_kcontrol *old;
+ 	int ret;
+@@ -424,8 +434,9 @@ add:
+ 	card->controls_count += kcontrol->count;
+ 	kcontrol->id.numid = card->last_numid + 1;
+ 	card->last_numid += kcontrol->count;
++	count = kcontrol->count;
+ 	up_write(&card->controls_rwsem);
+-	for (idx = 0; idx < kcontrol->count; idx++, id.index++, id.numid++)
++	for (idx = 0; idx < count; idx++, id.index++, id.numid++)
+ 		snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_ADD, &id);
+ 	return 0;
+ 
+@@ -898,9 +909,9 @@ static int snd_ctl_elem_write(struct snd_card *card, struct snd_ctl_file *file,
+ 			result = kctl->put(kctl, control);
+ 		}
+ 		if (result > 0) {
++			struct snd_ctl_elem_id id = control->id;
+ 			up_read(&card->controls_rwsem);
+-			snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_VALUE,
+-				       &control->id);
++			snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_VALUE, &id);
+ 			return 0;
+ 		}
+ 	}
+@@ -992,6 +1003,7 @@ static int snd_ctl_elem_unlock(struct snd_ctl_file *file,
+ 
+ struct user_element {
+ 	struct snd_ctl_elem_info info;
++	struct snd_card *card;
+ 	void *elem_data;		/* element data */
+ 	unsigned long elem_data_size;	/* size of element data in bytes */
+ 	void *tlv_data;			/* TLV data */
+@@ -1035,7 +1047,9 @@ static int snd_ctl_elem_user_get(struct snd_kcontrol *kcontrol,
+ {
+ 	struct user_element *ue = kcontrol->private_data;
+ 
++	mutex_lock(&ue->card->user_ctl_lock);
+ 	memcpy(&ucontrol->value, ue->elem_data, ue->elem_data_size);
++	mutex_unlock(&ue->card->user_ctl_lock);
+ 	return 0;
+ }
+ 
+@@ -1044,10 +1058,12 @@ static int snd_ctl_elem_user_put(struct snd_kcontrol *kcontrol,
+ {
+ 	int change;
+ 	struct user_element *ue = kcontrol->private_data;
+-	
++
++	mutex_lock(&ue->card->user_ctl_lock);
+ 	change = memcmp(&ucontrol->value, ue->elem_data, ue->elem_data_size) != 0;
+ 	if (change)
+ 		memcpy(ue->elem_data, &ucontrol->value, ue->elem_data_size);
++	mutex_unlock(&ue->card->user_ctl_lock);
+ 	return change;
+ }
+ 
+@@ -1067,19 +1083,32 @@ static int snd_ctl_elem_user_tlv(struct snd_kcontrol *kcontrol,
+ 		new_data = memdup_user(tlv, size);
+ 		if (IS_ERR(new_data))
+ 			return PTR_ERR(new_data);
++		mutex_lock(&ue->card->user_ctl_lock);
+ 		change = ue->tlv_data_size != size;
+ 		if (!change)
+ 			change = memcmp(ue->tlv_data, new_data, size);
+ 		kfree(ue->tlv_data);
+ 		ue->tlv_data = new_data;
+ 		ue->tlv_data_size = size;
++		mutex_unlock(&ue->card->user_ctl_lock);
+ 	} else {
+-		if (! ue->tlv_data_size || ! ue->tlv_data)
+-			return -ENXIO;
+-		if (size < ue->tlv_data_size)
+-			return -ENOSPC;
++		int ret = 0;
++
++		mutex_lock(&ue->card->user_ctl_lock);
++		if (!ue->tlv_data_size || !ue->tlv_data) {
++			ret = -ENXIO;
++			goto err_unlock;
++		}
++		if (size < ue->tlv_data_size) {
++			ret = -ENOSPC;
++			goto err_unlock;
++		}
+ 		if (copy_to_user(tlv, ue->tlv_data, ue->tlv_data_size))
+-			return -EFAULT;
++			ret = -EFAULT;
++err_unlock:
++		mutex_unlock(&ue->card->user_ctl_lock);
++		if (ret)
++			return ret;
+ 	}
+ 	return change;
+ }
+@@ -1137,8 +1166,6 @@ static int snd_ctl_elem_add(struct snd_ctl_file *file,
+ 	struct user_element *ue;
+ 	int idx, err;
+ 
+-	if (!replace && card->user_ctl_count >= MAX_USER_CONTROLS)
+-		return -ENOMEM;
+ 	if (info->count < 1)
+ 		return -EINVAL;
+ 	access = info->access == 0 ? SNDRV_CTL_ELEM_ACCESS_READWRITE :
+@@ -1147,21 +1174,16 @@ static int snd_ctl_elem_add(struct snd_ctl_file *file,
+ 				 SNDRV_CTL_ELEM_ACCESS_TLV_READWRITE));
+ 	info->id.numid = 0;
+ 	memset(&kctl, 0, sizeof(kctl));
+-	down_write(&card->controls_rwsem);
+-	_kctl = snd_ctl_find_id(card, &info->id);
+-	err = 0;
+-	if (_kctl) {
+-		if (replace)
+-			err = snd_ctl_remove(card, _kctl);
+-		else
+-			err = -EBUSY;
+-	} else {
+-		if (replace)
+-			err = -ENOENT;
++
++	if (replace) {
++		err = snd_ctl_remove_user_ctl(file, &info->id);
++		if (err)
++			return err;
+ 	}
+-	up_write(&card->controls_rwsem);
+-	if (err < 0)
+-		return err;
++
++	if (card->user_ctl_count >= MAX_USER_CONTROLS)
++		return -ENOMEM;
++
+ 	memcpy(&kctl.id, &info->id, sizeof(info->id));
+ 	kctl.count = info->owner ? info->owner : 1;
+ 	access |= SNDRV_CTL_ELEM_ACCESS_USER;
+@@ -1211,6 +1233,7 @@ static int snd_ctl_elem_add(struct snd_ctl_file *file,
+ 	ue = kzalloc(sizeof(struct user_element) + private_size, GFP_KERNEL);
+ 	if (ue == NULL)
+ 		return -ENOMEM;
++	ue->card = card;
+ 	ue->info = *info;
+ 	ue->info.access = 0;
+ 	ue->elem_data = (char *)ue + sizeof(*ue);
+@@ -1322,8 +1345,9 @@ static int snd_ctl_tlv_ioctl(struct snd_ctl_file *file,
+ 		}
+ 		err = kctl->tlv.c(kctl, op_flag, tlv.length, _tlv->tlv);
+ 		if (err > 0) {
++			struct snd_ctl_elem_id id = kctl->id;
+ 			up_read(&card->controls_rwsem);
+-			snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_TLV, &kctl->id);
++			snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_TLV, &id);
+ 			return 0;
+ 		}
+ 	} else {
+diff --git a/sound/core/init.c b/sound/core/init.c
+index 6ef0640..27791a5 100644
+--- a/sound/core/init.c
++++ b/sound/core/init.c
+@@ -208,6 +208,7 @@ int snd_card_create(int idx, const char *xid,
+ 	INIT_LIST_HEAD(&card->devices);
+ 	init_rwsem(&card->controls_rwsem);
+ 	rwlock_init(&card->ctl_files_rwlock);
++	mutex_init(&card->user_ctl_lock);
+ 	INIT_LIST_HEAD(&card->controls);
+ 	INIT_LIST_HEAD(&card->ctl_files);
+ 	spin_lock_init(&card->files_lock);
+diff --git a/sound/pci/hda/hda_intel.c b/sound/pci/hda/hda_intel.c
+index 5f055d7..1800db6 100644
+--- a/sound/pci/hda/hda_intel.c
++++ b/sound/pci/hda/hda_intel.c
+@@ -3856,6 +3856,9 @@ static DEFINE_PCI_DEVICE_TABLE(azx_ids) = {
+ 	/* Lynx Point */
+ 	{ PCI_DEVICE(0x8086, 0x8c20),
+ 	  .driver_data = AZX_DRIVER_PCH | AZX_DCAPS_INTEL_PCH },
++	/* 9 Series */
++	{ PCI_DEVICE(0x8086, 0x8ca0),
++	  .driver_data = AZX_DRIVER_PCH | AZX_DCAPS_INTEL_PCH },
+ 	/* Wellsburg */
+ 	{ PCI_DEVICE(0x8086, 0x8d20),
+ 	  .driver_data = AZX_DRIVER_PCH | AZX_DCAPS_INTEL_PCH },
+diff --git a/sound/pci/hda/patch_analog.c b/sound/pci/hda/patch_analog.c
+index a7b07f7..290e098 100644
+--- a/sound/pci/hda/patch_analog.c
++++ b/sound/pci/hda/patch_analog.c
+@@ -1680,6 +1680,7 @@ static int ad1983_parse_auto_config(struct hda_codec *codec)
+ 		return err;
+ 	spec = codec->spec;
+ 
++	spec->gen.mixer_nid = 0x0e;
+ 	spec->gen.beep_nid = 0x10;
+ 	set_beep_amp(spec, 0x10, 0, HDA_OUTPUT);
+ 	err = ad198x_parse_auto_config(codec);
+@@ -3666,6 +3667,7 @@ static int ad1884_parse_auto_config(struct hda_codec *codec)
+ 	spec = codec->spec;
+ 
+ 	spec->gen.mixer_nid = 0x20;
++	spec->gen.mixer_merge_nid = 0x21;
+ 	spec->gen.beep_nid = 0x10;
+ 	set_beep_amp(spec, 0x10, 0, HDA_OUTPUT);
+ 
+diff --git a/sound/pci/hda/patch_ca0132.c b/sound/pci/hda/patch_ca0132.c
+index 90ff7a3..01fefbe 100644
+--- a/sound/pci/hda/patch_ca0132.c
++++ b/sound/pci/hda/patch_ca0132.c
+@@ -2662,60 +2662,6 @@ static bool dspload_wait_loaded(struct hda_codec *codec)
+ }
+ 
+ /*
+- * PCM stuffs
+- */
+-static void ca0132_setup_stream(struct hda_codec *codec, hda_nid_t nid,
+-				 u32 stream_tag,
+-				 int channel_id, int format)
+-{
+-	unsigned int oldval, newval;
+-
+-	if (!nid)
+-		return;
+-
+-	snd_printdd(
+-		   "ca0132_setup_stream: NID=0x%x, stream=0x%x, "
+-		   "channel=%d, format=0x%x\n",
+-		   nid, stream_tag, channel_id, format);
+-
+-	/* update the format-id if changed */
+-	oldval = snd_hda_codec_read(codec, nid, 0,
+-				    AC_VERB_GET_STREAM_FORMAT,
+-				    0);
+-	if (oldval != format) {
+-		msleep(20);
+-		snd_hda_codec_write(codec, nid, 0,
+-				    AC_VERB_SET_STREAM_FORMAT,
+-				    format);
+-	}
+-
+-	oldval = snd_hda_codec_read(codec, nid, 0, AC_VERB_GET_CONV, 0);
+-	newval = (stream_tag << 4) | channel_id;
+-	if (oldval != newval) {
+-		snd_hda_codec_write(codec, nid, 0,
+-				    AC_VERB_SET_CHANNEL_STREAMID,
+-				    newval);
+-	}
+-}
+-
+-static void ca0132_cleanup_stream(struct hda_codec *codec, hda_nid_t nid)
+-{
+-	unsigned int val;
+-
+-	if (!nid)
+-		return;
+-
+-	snd_printdd(KERN_INFO "ca0132_cleanup_stream: NID=0x%x\n", nid);
+-
+-	val = snd_hda_codec_read(codec, nid, 0, AC_VERB_GET_CONV, 0);
+-	if (!val)
+-		return;
+-
+-	snd_hda_codec_write(codec, nid, 0, AC_VERB_SET_STREAM_FORMAT, 0);
+-	snd_hda_codec_write(codec, nid, 0, AC_VERB_SET_CHANNEL_STREAMID, 0);
+-}
+-
+-/*
+  * PCM callbacks
+  */
+ static int ca0132_playback_pcm_prepare(struct hda_pcm_stream *hinfo,
+@@ -2726,7 +2672,7 @@ static int ca0132_playback_pcm_prepare(struct hda_pcm_stream *hinfo,
+ {
+ 	struct ca0132_spec *spec = codec->spec;
+ 
+-	ca0132_setup_stream(codec, spec->dacs[0], stream_tag, 0, format);
++	snd_hda_codec_setup_stream(codec, spec->dacs[0], stream_tag, 0, format);
+ 
+ 	return 0;
+ }
+@@ -2745,7 +2691,7 @@ static int ca0132_playback_pcm_cleanup(struct hda_pcm_stream *hinfo,
+ 	if (spec->effects_switch[PLAY_ENHANCEMENT - EFFECT_START_NID])
+ 		msleep(50);
+ 
+-	ca0132_cleanup_stream(codec, spec->dacs[0]);
++	snd_hda_codec_cleanup_stream(codec, spec->dacs[0]);
+ 
+ 	return 0;
+ }
+@@ -2822,10 +2768,8 @@ static int ca0132_capture_pcm_prepare(struct hda_pcm_stream *hinfo,
+ 					unsigned int format,
+ 					struct snd_pcm_substream *substream)
+ {
+-	struct ca0132_spec *spec = codec->spec;
+-
+-	ca0132_setup_stream(codec, spec->adcs[substream->number],
+-			    stream_tag, 0, format);
++	snd_hda_codec_setup_stream(codec, hinfo->nid,
++				   stream_tag, 0, format);
+ 
+ 	return 0;
+ }
+@@ -2839,7 +2783,7 @@ static int ca0132_capture_pcm_cleanup(struct hda_pcm_stream *hinfo,
+ 	if (spec->dsp_state == DSP_DOWNLOADING)
+ 		return 0;
+ 
+-	ca0132_cleanup_stream(codec, hinfo->nid);
++	snd_hda_codec_cleanup_stream(codec, hinfo->nid);
+ 	return 0;
+ }
+ 
+@@ -4742,6 +4686,8 @@ static int patch_ca0132(struct hda_codec *codec)
+ 		return err;
+ 
+ 	codec->patch_ops = ca0132_patch_ops;
++	codec->pcm_format_first = 1;
++	codec->no_sticky_stream = 1;
+ 
+ 	return 0;
+ }
+diff --git a/sound/pci/hda/patch_realtek.c b/sound/pci/hda/patch_realtek.c
+index 4b06e0a..0b85e85 100644
+--- a/sound/pci/hda/patch_realtek.c
++++ b/sound/pci/hda/patch_realtek.c
+@@ -937,6 +937,7 @@ static int alc_codec_rename_from_preset(struct hda_codec *codec)
+ 
+ static const struct snd_pci_quirk beep_white_list[] = {
+ 	SND_PCI_QUIRK(0x1043, 0x103c, "ASUS", 1),
++	SND_PCI_QUIRK(0x1043, 0x115d, "ASUS", 1),
+ 	SND_PCI_QUIRK(0x1043, 0x829f, "ASUS", 1),
+ 	SND_PCI_QUIRK(0x1043, 0x8376, "EeePC", 1),
+ 	SND_PCI_QUIRK(0x1043, 0x83ce, "EeePC", 1),
+@@ -1589,12 +1590,10 @@ static const struct hda_fixup alc260_fixups[] = {
+ 	[ALC260_FIXUP_COEF] = {
+ 		.type = HDA_FIXUP_VERBS,
+ 		.v.verbs = (const struct hda_verb[]) {
+-			{ 0x20, AC_VERB_SET_COEF_INDEX, 0x07 },
+-			{ 0x20, AC_VERB_SET_PROC_COEF,  0x3040 },
++			{ 0x1a, AC_VERB_SET_COEF_INDEX, 0x07 },
++			{ 0x1a, AC_VERB_SET_PROC_COEF,  0x3040 },
+ 			{ }
+ 		},
+-		.chained = true,
+-		.chain_id = ALC260_FIXUP_HP_PIN_0F,
+ 	},
+ 	[ALC260_FIXUP_GPIO1] = {
+ 		.type = HDA_FIXUP_VERBS,
+@@ -1609,8 +1608,8 @@ static const struct hda_fixup alc260_fixups[] = {
+ 	[ALC260_FIXUP_REPLACER] = {
+ 		.type = HDA_FIXUP_VERBS,
+ 		.v.verbs = (const struct hda_verb[]) {
+-			{ 0x20, AC_VERB_SET_COEF_INDEX, 0x07 },
+-			{ 0x20, AC_VERB_SET_PROC_COEF,  0x3050 },
++			{ 0x1a, AC_VERB_SET_COEF_INDEX, 0x07 },
++			{ 0x1a, AC_VERB_SET_PROC_COEF,  0x3050 },
+ 			{ }
+ 		},
+ 		.chained = true,
+@@ -1765,6 +1764,7 @@ enum {
+ 	ALC889_FIXUP_IMAC91_VREF,
+ 	ALC889_FIXUP_MBA11_VREF,
+ 	ALC889_FIXUP_MBA21_VREF,
++	ALC889_FIXUP_MP11_VREF,
+ 	ALC882_FIXUP_INV_DMIC,
+ 	ALC882_FIXUP_NO_PRIMARY_HP,
+ 	ALC887_FIXUP_ASUS_BASS,
+@@ -2119,6 +2119,12 @@ static const struct hda_fixup alc882_fixups[] = {
+ 		.chained = true,
+ 		.chain_id = ALC889_FIXUP_MBP_VREF,
+ 	},
++	[ALC889_FIXUP_MP11_VREF] = {
++		.type = HDA_FIXUP_FUNC,
++		.v.func = alc889_fixup_mba11_vref,
++		.chained = true,
++		.chain_id = ALC885_FIXUP_MACPRO_GPIO,
++	},
+ 	[ALC882_FIXUP_INV_DMIC] = {
+ 		.type = HDA_FIXUP_FUNC,
+ 		.v.func = alc_fixup_inv_dmic_0x12,
+@@ -2176,7 +2182,7 @@ static const struct snd_pci_quirk alc882_fixup_tbl[] = {
+ 	SND_PCI_QUIRK(0x106b, 0x00a0, "MacBookPro 3,1", ALC889_FIXUP_MBP_VREF),
+ 	SND_PCI_QUIRK(0x106b, 0x00a1, "Macbook", ALC889_FIXUP_MBP_VREF),
+ 	SND_PCI_QUIRK(0x106b, 0x00a4, "MacbookPro 4,1", ALC889_FIXUP_MBP_VREF),
+-	SND_PCI_QUIRK(0x106b, 0x0c00, "Mac Pro", ALC885_FIXUP_MACPRO_GPIO),
++	SND_PCI_QUIRK(0x106b, 0x0c00, "Mac Pro", ALC889_FIXUP_MP11_VREF),
+ 	SND_PCI_QUIRK(0x106b, 0x1000, "iMac 24", ALC885_FIXUP_MACPRO_GPIO),
+ 	SND_PCI_QUIRK(0x106b, 0x2800, "AppleTV", ALC885_FIXUP_MACPRO_GPIO),
+ 	SND_PCI_QUIRK(0x106b, 0x2c00, "MacbookPro rev3", ALC889_FIXUP_MBP_VREF),
+@@ -2851,8 +2857,9 @@ static void alc269_fixup_mic_mute_hook(void *private_data, int enabled)
+ 
+ 	if (spec->mute_led_polarity)
+ 		enabled = !enabled;
+-	pinval = AC_PINCTL_IN_EN |
+-		(enabled ? AC_PINCTL_VREF_HIZ : AC_PINCTL_VREF_80);
++	pinval = snd_hda_codec_get_pin_target(codec, spec->mute_led_nid);
++	pinval &= ~AC_PINCTL_VREFEN;
++	pinval |= enabled ? AC_PINCTL_VREF_HIZ : AC_PINCTL_VREF_80;
+ 	if (spec->mute_led_nid)
+ 		snd_hda_set_pin_ctl_cache(codec, spec->mute_led_nid, pinval);
+ }
+@@ -3349,6 +3356,7 @@ enum {
+ 	ALC269_FIXUP_STEREO_DMIC,
+ 	ALC269_FIXUP_QUANTA_MUTE,
+ 	ALC269_FIXUP_LIFEBOOK,
++	ALC269_FIXUP_LIFEBOOK_EXTMIC,
+ 	ALC269_FIXUP_AMIC,
+ 	ALC269_FIXUP_DMIC,
+ 	ALC269VB_FIXUP_AMIC,
+@@ -3456,6 +3464,13 @@ static const struct hda_fixup alc269_fixups[] = {
+ 		.chained = true,
+ 		.chain_id = ALC269_FIXUP_QUANTA_MUTE
+ 	},
++	[ALC269_FIXUP_LIFEBOOK_EXTMIC] = {
++		.type = HDA_FIXUP_PINS,
++		.v.pins = (const struct hda_pintbl[]) {
++			{ 0x19, 0x01a1903c }, /* headset mic, with jack detect */
++			{ }
++		},
++	},
+ 	[ALC269_FIXUP_AMIC] = {
+ 		.type = HDA_FIXUP_PINS,
+ 		.v.pins = (const struct hda_pintbl[]) {
+@@ -3641,6 +3656,7 @@ static const struct hda_fixup alc269_fixups[] = {
+ };
+ 
+ static const struct snd_pci_quirk alc269_fixup_tbl[] = {
++	SND_PCI_QUIRK(0x1025, 0x0283, "Acer TravelMate 8371", ALC269_FIXUP_INV_DMIC),
+ 	SND_PCI_QUIRK(0x1025, 0x029b, "Acer 1810TZ", ALC269_FIXUP_INV_DMIC),
+ 	SND_PCI_QUIRK(0x1025, 0x0349, "Acer AOD260", ALC269_FIXUP_INV_DMIC),
+ 	SND_PCI_QUIRK(0x1028, 0x05bd, "Dell", ALC269_FIXUP_DELL2_MIC_NO_PRESENCE),
+@@ -3693,6 +3709,7 @@ static const struct snd_pci_quirk alc269_fixup_tbl[] = {
+ 	SND_PCI_QUIRK(0x1043, 0x8398, "ASUS P1005", ALC269_FIXUP_STEREO_DMIC),
+ 	SND_PCI_QUIRK(0x1043, 0x83ce, "ASUS P1005", ALC269_FIXUP_STEREO_DMIC),
+ 	SND_PCI_QUIRK(0x1043, 0x8516, "ASUS X101CH", ALC269_FIXUP_ASUS_X101),
++	SND_PCI_QUIRK(0x104d, 0x90b5, "Sony VAIO Pro 11", ALC286_FIXUP_SONY_MIC_NO_PRESENCE),
+ 	SND_PCI_QUIRK(0x104d, 0x90b6, "Sony VAIO Pro 13", ALC286_FIXUP_SONY_MIC_NO_PRESENCE),
+ 	SND_PCI_QUIRK(0x104d, 0x9073, "Sony VAIO", ALC275_FIXUP_SONY_VAIO_GPIO2),
+ 	SND_PCI_QUIRK(0x104d, 0x907b, "Sony VAIO", ALC275_FIXUP_SONY_HWEQ),
+@@ -3704,6 +3721,7 @@ static const struct snd_pci_quirk alc269_fixup_tbl[] = {
+ 	SND_PCI_QUIRK(0x1025, 0x0742, "Acer AO756", ALC271_FIXUP_HP_GATE_MIC_JACK),
+ 	SND_PCI_QUIRK_VENDOR(0x1025, "Acer Aspire", ALC271_FIXUP_DMIC),
+ 	SND_PCI_QUIRK(0x10cf, 0x1475, "Lifebook", ALC269_FIXUP_LIFEBOOK),
++	SND_PCI_QUIRK(0x10cf, 0x1845, "Lifebook U904", ALC269_FIXUP_LIFEBOOK_EXTMIC),
+ 	SND_PCI_QUIRK(0x17aa, 0x20f2, "Thinkpad SL410/510", ALC269_FIXUP_SKU_IGNORE),
+ 	SND_PCI_QUIRK(0x17aa, 0x215e, "Thinkpad L512", ALC269_FIXUP_SKU_IGNORE),
+ 	SND_PCI_QUIRK(0x17aa, 0x21b8, "Thinkpad Edge 14", ALC269_FIXUP_SKU_IGNORE),
+@@ -3892,6 +3910,7 @@ static int patch_alc269(struct hda_codec *codec)
+ 		spec->codec_variant = ALC269_TYPE_ALC284;
+ 		break;
+ 	case 0x10ec0286:
++	case 0x10ec0288:
+ 		spec->codec_variant = ALC269_TYPE_ALC286;
+ 		break;
+ 	case 0x10ec0255:
+@@ -4634,6 +4653,7 @@ static const struct hda_codec_preset snd_hda_preset_realtek[] = {
+ 	{ .id = 0x10ec0283, .name = "ALC283", .patch = patch_alc269 },
+ 	{ .id = 0x10ec0284, .name = "ALC284", .patch = patch_alc269 },
+ 	{ .id = 0x10ec0286, .name = "ALC286", .patch = patch_alc269 },
++	{ .id = 0x10ec0288, .name = "ALC288", .patch = patch_alc269 },
+ 	{ .id = 0x10ec0290, .name = "ALC290", .patch = patch_alc269 },
+ 	{ .id = 0x10ec0292, .name = "ALC292", .patch = patch_alc269 },
+ 	{ .id = 0x10ec0861, .rev = 0x100340, .name = "ALC660",
+@@ -4653,6 +4673,7 @@ static const struct hda_codec_preset snd_hda_preset_realtek[] = {
+ 	{ .id = 0x10ec0670, .name = "ALC670", .patch = patch_alc662 },
+ 	{ .id = 0x10ec0671, .name = "ALC671", .patch = patch_alc662 },
+ 	{ .id = 0x10ec0680, .name = "ALC680", .patch = patch_alc680 },
++	{ .id = 0x10ec0867, .name = "ALC891", .patch = patch_alc882 },
+ 	{ .id = 0x10ec0880, .name = "ALC880", .patch = patch_alc880 },
+ 	{ .id = 0x10ec0882, .name = "ALC882", .patch = patch_alc882 },
+ 	{ .id = 0x10ec0883, .name = "ALC883", .patch = patch_alc882 },
+diff --git a/sound/pci/hda/patch_sigmatel.c b/sound/pci/hda/patch_sigmatel.c
+index dc4833f..0c521b7 100644
+--- a/sound/pci/hda/patch_sigmatel.c
++++ b/sound/pci/hda/patch_sigmatel.c
+@@ -83,6 +83,7 @@ enum {
+ 	STAC_DELL_M6_BOTH,
+ 	STAC_DELL_EQ,
+ 	STAC_ALIENWARE_M17X,
++	STAC_92HD89XX_HP_FRONT_JACK,
+ 	STAC_92HD73XX_MODELS
+ };
+ 
+@@ -97,6 +98,7 @@ enum {
+ 	STAC_92HD83XXX_HP_LED,
+ 	STAC_92HD83XXX_HP_INV_LED,
+ 	STAC_92HD83XXX_HP_MIC_LED,
++	STAC_HP_LED_GPIO10,
+ 	STAC_92HD83XXX_HEADSET_JACK,
+ 	STAC_92HD83XXX_HP,
+ 	STAC_HP_ENVY_BASS,
+@@ -1775,6 +1777,12 @@ static const struct hda_pintbl intel_dg45id_pin_configs[] = {
+ 	{}
+ };
+ 
++static const struct hda_pintbl stac92hd89xx_hp_front_jack_pin_configs[] = {
++	{ 0x0a, 0x02214030 },
++	{ 0x0b, 0x02A19010 },
++	{}
++};
++
+ static void stac92hd73xx_fixup_ref(struct hda_codec *codec,
+ 				   const struct hda_fixup *fix, int action)
+ {
+@@ -1893,6 +1901,10 @@ static const struct hda_fixup stac92hd73xx_fixups[] = {
+ 	[STAC_92HD73XX_NO_JD] = {
+ 		.type = HDA_FIXUP_FUNC,
+ 		.v.func = stac92hd73xx_fixup_no_jd,
++	},
++	[STAC_92HD89XX_HP_FRONT_JACK] = {
++		.type = HDA_FIXUP_PINS,
++		.v.pins = stac92hd89xx_hp_front_jack_pin_configs,
+ 	}
+ };
+ 
+@@ -1953,6 +1965,8 @@ static const struct snd_pci_quirk stac92hd73xx_fixup_tbl[] = {
+ 		      "Alienware M17x", STAC_ALIENWARE_M17X),
+ 	SND_PCI_QUIRK(PCI_VENDOR_ID_DELL, 0x0490,
+ 		      "Alienware M17x R3", STAC_DELL_EQ),
++	SND_PCI_QUIRK(PCI_VENDOR_ID_HP, 0x2b17,
++				"unknown HP", STAC_92HD89XX_HP_FRONT_JACK),
+ 	{} /* terminator */
+ };
+ 
+@@ -2094,6 +2108,17 @@ static void stac92hd83xxx_fixup_hp_mic_led(struct hda_codec *codec,
+ 		spec->mic_mute_led_gpio = 0x08; /* GPIO3 */
+ }
+ 
++static void stac92hd83xxx_fixup_hp_led_gpio10(struct hda_codec *codec,
++				   const struct hda_fixup *fix, int action)
++{
++	struct sigmatel_spec *spec = codec->spec;
++
++	if (action == HDA_FIXUP_ACT_PRE_PROBE) {
++		spec->gpio_led = 0x10; /* GPIO4 */
++		spec->default_polarity = 0;
++	}
++}
++
+ static void stac92hd83xxx_fixup_headset_jack(struct hda_codec *codec,
+ 				   const struct hda_fixup *fix, int action)
+ {
+@@ -2160,6 +2185,12 @@ static const struct hda_fixup stac92hd83xxx_fixups[] = {
+ 		.chained = true,
+ 		.chain_id = STAC_92HD83XXX_HP,
+ 	},
++	[STAC_HP_LED_GPIO10] = {
++		.type = HDA_FIXUP_FUNC,
++		.v.func = stac92hd83xxx_fixup_hp_led_gpio10,
++		.chained = true,
++		.chain_id = STAC_92HD83XXX_HP,
++	},
+ 	[STAC_92HD83XXX_HEADSET_JACK] = {
+ 		.type = HDA_FIXUP_FUNC,
+ 		.v.func = stac92hd83xxx_fixup_headset_jack,
+@@ -2231,6 +2262,8 @@ static const struct snd_pci_quirk stac92hd83xxx_fixup_tbl[] = {
+ 			  "HP", STAC_92HD83XXX_HP_cNB11_INTQUAD),
+ 	SND_PCI_QUIRK(PCI_VENDOR_ID_HP, 0x1888,
+ 			  "HP Envy Spectre", STAC_HP_ENVY_BASS),
++	SND_PCI_QUIRK(PCI_VENDOR_ID_HP, 0x1899,
++			  "HP Folio 13", STAC_HP_LED_GPIO10),
+ 	SND_PCI_QUIRK(PCI_VENDOR_ID_HP, 0x18df,
+ 			  "HP Folio", STAC_92HD83XXX_HP_MIC_LED),
+ 	SND_PCI_QUIRK_MASK(PCI_VENDOR_ID_HP, 0xff00, 0x1900,
+diff --git a/sound/pci/ice1712/ice1712.c b/sound/pci/ice1712/ice1712.c
+index 806407a..e6b70e3 100644
+--- a/sound/pci/ice1712/ice1712.c
++++ b/sound/pci/ice1712/ice1712.c
+@@ -685,9 +685,10 @@ static snd_pcm_uframes_t snd_ice1712_playback_pointer(struct snd_pcm_substream *
+ 	if (!(snd_ice1712_read(ice, ICE1712_IREG_PBK_CTRL) & 1))
+ 		return 0;
+ 	ptr = runtime->buffer_size - inw(ice->ddma_port + 4);
++	ptr = bytes_to_frames(substream->runtime, ptr);
+ 	if (ptr == runtime->buffer_size)
+ 		ptr = 0;
+-	return bytes_to_frames(substream->runtime, ptr);
++	return ptr;
+ }
+ 
+ static snd_pcm_uframes_t snd_ice1712_playback_ds_pointer(struct snd_pcm_substream *substream)
+@@ -704,9 +705,10 @@ static snd_pcm_uframes_t snd_ice1712_playback_ds_pointer(struct snd_pcm_substrea
+ 		addr = ICE1712_DSC_ADDR0;
+ 	ptr = snd_ice1712_ds_read(ice, substream->number * 2, addr) -
+ 		ice->playback_con_virt_addr[substream->number];
++	ptr = bytes_to_frames(substream->runtime, ptr);
+ 	if (ptr == substream->runtime->buffer_size)
+ 		ptr = 0;
+-	return bytes_to_frames(substream->runtime, ptr);
++	return ptr;
+ }
+ 
+ static snd_pcm_uframes_t snd_ice1712_capture_pointer(struct snd_pcm_substream *substream)
+@@ -717,9 +719,10 @@ static snd_pcm_uframes_t snd_ice1712_capture_pointer(struct snd_pcm_substream *s
+ 	if (!(snd_ice1712_read(ice, ICE1712_IREG_CAP_CTRL) & 1))
+ 		return 0;
+ 	ptr = inl(ICEREG(ice, CONCAP_ADDR)) - ice->capture_con_virt_addr;
++	ptr = bytes_to_frames(substream->runtime, ptr);
+ 	if (ptr == substream->runtime->buffer_size)
+ 		ptr = 0;
+-	return bytes_to_frames(substream->runtime, ptr);
++	return ptr;
+ }
+ 
+ static const struct snd_pcm_hardware snd_ice1712_playback = {
+@@ -1113,9 +1116,10 @@ static snd_pcm_uframes_t snd_ice1712_playback_pro_pointer(struct snd_pcm_substre
+ 	if (!(inl(ICEMT(ice, PLAYBACK_CONTROL)) & ICE1712_PLAYBACK_START))
+ 		return 0;
+ 	ptr = ice->playback_pro_size - (inw(ICEMT(ice, PLAYBACK_SIZE)) << 2);
++	ptr = bytes_to_frames(substream->runtime, ptr);
+ 	if (ptr == substream->runtime->buffer_size)
+ 		ptr = 0;
+-	return bytes_to_frames(substream->runtime, ptr);
++	return ptr;
+ }
+ 
+ static snd_pcm_uframes_t snd_ice1712_capture_pro_pointer(struct snd_pcm_substream *substream)
+@@ -1126,9 +1130,10 @@ static snd_pcm_uframes_t snd_ice1712_capture_pro_pointer(struct snd_pcm_substrea
+ 	if (!(inl(ICEMT(ice, PLAYBACK_CONTROL)) & ICE1712_CAPTURE_START_SHADOW))
+ 		return 0;
+ 	ptr = ice->capture_pro_size - (inw(ICEMT(ice, CAPTURE_SIZE)) << 2);
++	ptr = bytes_to_frames(substream->runtime, ptr);
+ 	if (ptr == substream->runtime->buffer_size)
+ 		ptr = 0;
+-	return bytes_to_frames(substream->runtime, ptr);
++	return ptr;
+ }
+ 
+ static const struct snd_pcm_hardware snd_ice1712_playback_pro = {
+diff --git a/sound/pci/oxygen/xonar_dg.c b/sound/pci/oxygen/xonar_dg.c
+index 77acd79..eb7ad77 100644
+--- a/sound/pci/oxygen/xonar_dg.c
++++ b/sound/pci/oxygen/xonar_dg.c
+@@ -294,6 +294,16 @@ static int output_switch_put(struct snd_kcontrol *ctl,
+ 		oxygen_write16_masked(chip, OXYGEN_GPIO_DATA,
+ 				      data->output_sel == 1 ? GPIO_HP_REAR : 0,
+ 				      GPIO_HP_REAR);
++		oxygen_write8_masked(chip, OXYGEN_PLAY_ROUTING,
++				     data->output_sel == 0 ?
++				     OXYGEN_PLAY_MUTE01 :
++				     OXYGEN_PLAY_MUTE23 |
++				     OXYGEN_PLAY_MUTE45 |
++				     OXYGEN_PLAY_MUTE67,
++				     OXYGEN_PLAY_MUTE01 |
++				     OXYGEN_PLAY_MUTE23 |
++				     OXYGEN_PLAY_MUTE45 |
++				     OXYGEN_PLAY_MUTE67);
+ 	}
+ 	mutex_unlock(&chip->mutex);
+ 	return changed;
+@@ -596,7 +606,7 @@ struct oxygen_model model_xonar_dg = {
+ 	.model_data_size = sizeof(struct dg),
+ 	.device_config = PLAYBACK_0_TO_I2S |
+ 			 PLAYBACK_1_TO_SPDIF |
+-			 CAPTURE_0_FROM_I2S_2 |
++			 CAPTURE_0_FROM_I2S_1 |
+ 			 CAPTURE_1_FROM_SPDIF,
+ 	.dac_channels_pcm = 6,
+ 	.dac_channels_mixer = 0,
+diff --git a/sound/soc/Makefile b/sound/soc/Makefile
+index 197b6ae..e85fb6d 100644
+--- a/sound/soc/Makefile
++++ b/sound/soc/Makefile
+@@ -1,5 +1,5 @@
+ snd-soc-core-objs := soc-core.o soc-dapm.o soc-jack.o soc-cache.o soc-utils.o
+-snd-soc-core-objs += soc-pcm.o soc-compress.o soc-io.o
++snd-soc-core-objs += soc-pcm.o soc-compress.o soc-io.o soc-devres.o
+ 
+ ifneq ($(CONFIG_SND_SOC_DMAENGINE_PCM),)
+ snd-soc-core-objs += soc-dmaengine-pcm.o
+diff --git a/sound/soc/codecs/cs42l51.c b/sound/soc/codecs/cs42l51.c
+index 1e0fa3b..e1dfebb 100644
+--- a/sound/soc/codecs/cs42l51.c
++++ b/sound/soc/codecs/cs42l51.c
+@@ -124,9 +124,8 @@ static int cs42l51_set_chan_mix(struct snd_kcontrol *kcontrol,
+ 
+ static const DECLARE_TLV_DB_SCALE(adc_pcm_tlv, -5150, 50, 0);
+ static const DECLARE_TLV_DB_SCALE(tone_tlv, -1050, 150, 0);
+-/* This is a lie. after -102 db, it stays at -102 */
+-/* maybe a range would be better */
+-static const DECLARE_TLV_DB_SCALE(aout_tlv, -11550, 50, 0);
++
++static const DECLARE_TLV_DB_SCALE(aout_tlv, -10200, 50, 0);
+ 
+ static const DECLARE_TLV_DB_SCALE(boost_tlv, 1600, 1600, 0);
+ static const char *chan_mix[] = {
+@@ -141,7 +140,7 @@ static const struct soc_enum cs42l51_chan_mix =
+ static const struct snd_kcontrol_new cs42l51_snd_controls[] = {
+ 	SOC_DOUBLE_R_SX_TLV("PCM Playback Volume",
+ 			CS42L51_PCMA_VOL, CS42L51_PCMB_VOL,
+-			6, 0x19, 0x7F, adc_pcm_tlv),
++			0, 0x19, 0x7F, adc_pcm_tlv),
+ 	SOC_DOUBLE_R("PCM Playback Switch",
+ 			CS42L51_PCMA_VOL, CS42L51_PCMB_VOL, 7, 1, 1),
+ 	SOC_DOUBLE_R_SX_TLV("Analog Playback Volume",
+@@ -149,7 +148,7 @@ static const struct snd_kcontrol_new cs42l51_snd_controls[] = {
+ 			0, 0x34, 0xE4, aout_tlv),
+ 	SOC_DOUBLE_R_SX_TLV("ADC Mixer Volume",
+ 			CS42L51_ADCA_VOL, CS42L51_ADCB_VOL,
+-			6, 0x19, 0x7F, adc_pcm_tlv),
++			0, 0x19, 0x7F, adc_pcm_tlv),
+ 	SOC_DOUBLE_R("ADC Mixer Switch",
+ 			CS42L51_ADCA_VOL, CS42L51_ADCB_VOL, 7, 1, 1),
+ 	SOC_SINGLE("Playback Deemphasis Switch", CS42L51_DAC_CTL, 3, 1, 0),
+diff --git a/sound/soc/codecs/cs42l52.c b/sound/soc/codecs/cs42l52.c
+index ee25f32..b99af63 100644
+--- a/sound/soc/codecs/cs42l52.c
++++ b/sound/soc/codecs/cs42l52.c
+@@ -350,7 +350,7 @@ static const char * const right_swap_text[] = {
+ static const unsigned int swap_values[] = { 0, 1, 3 };
+ 
+ static const struct soc_enum adca_swap_enum =
+-	SOC_VALUE_ENUM_SINGLE(CS42L52_ADC_PCM_MIXER, 2, 1,
++	SOC_VALUE_ENUM_SINGLE(CS42L52_ADC_PCM_MIXER, 2, 3,
+ 			      ARRAY_SIZE(left_swap_text),
+ 			      left_swap_text,
+ 			      swap_values);
+@@ -359,7 +359,7 @@ static const struct snd_kcontrol_new adca_mixer =
+ 	SOC_DAPM_ENUM("Route", adca_swap_enum);
+ 
+ static const struct soc_enum pcma_swap_enum =
+-	SOC_VALUE_ENUM_SINGLE(CS42L52_ADC_PCM_MIXER, 6, 1,
++	SOC_VALUE_ENUM_SINGLE(CS42L52_ADC_PCM_MIXER, 6, 3,
+ 			      ARRAY_SIZE(left_swap_text),
+ 			      left_swap_text,
+ 			      swap_values);
+@@ -368,7 +368,7 @@ static const struct snd_kcontrol_new pcma_mixer =
+ 	SOC_DAPM_ENUM("Route", pcma_swap_enum);
+ 
+ static const struct soc_enum adcb_swap_enum =
+-	SOC_VALUE_ENUM_SINGLE(CS42L52_ADC_PCM_MIXER, 0, 1,
++	SOC_VALUE_ENUM_SINGLE(CS42L52_ADC_PCM_MIXER, 0, 3,
+ 			      ARRAY_SIZE(right_swap_text),
+ 			      right_swap_text,
+ 			      swap_values);
+@@ -377,7 +377,7 @@ static const struct snd_kcontrol_new adcb_mixer =
+ 	SOC_DAPM_ENUM("Route", adcb_swap_enum);
+ 
+ static const struct soc_enum pcmb_swap_enum =
+-	SOC_VALUE_ENUM_SINGLE(CS42L52_ADC_PCM_MIXER, 4, 1,
++	SOC_VALUE_ENUM_SINGLE(CS42L52_ADC_PCM_MIXER, 4, 3,
+ 			      ARRAY_SIZE(right_swap_text),
+ 			      right_swap_text,
+ 			      swap_values);
+diff --git a/sound/soc/codecs/cs42l73.c b/sound/soc/codecs/cs42l73.c
+index 3b20c86..eade6e2 100644
+--- a/sound/soc/codecs/cs42l73.c
++++ b/sound/soc/codecs/cs42l73.c
+@@ -325,7 +325,7 @@ static const char * const cs42l73_mono_mix_texts[] = {
+ static const unsigned int cs42l73_mono_mix_values[] = { 0, 1, 2 };
+ 
+ static const struct soc_enum spk_asp_enum =
+-	SOC_VALUE_ENUM_SINGLE(CS42L73_MMIXCTL, 6, 1,
++	SOC_VALUE_ENUM_SINGLE(CS42L73_MMIXCTL, 6, 3,
+ 			      ARRAY_SIZE(cs42l73_mono_mix_texts),
+ 			      cs42l73_mono_mix_texts,
+ 			      cs42l73_mono_mix_values);
+@@ -343,7 +343,7 @@ static const struct snd_kcontrol_new spk_xsp_mixer =
+ 	SOC_DAPM_ENUM("Route", spk_xsp_enum);
+ 
+ static const struct soc_enum esl_asp_enum =
+-	SOC_VALUE_ENUM_SINGLE(CS42L73_MMIXCTL, 2, 5,
++	SOC_VALUE_ENUM_SINGLE(CS42L73_MMIXCTL, 2, 3,
+ 			      ARRAY_SIZE(cs42l73_mono_mix_texts),
+ 			      cs42l73_mono_mix_texts,
+ 			      cs42l73_mono_mix_values);
+@@ -352,7 +352,7 @@ static const struct snd_kcontrol_new esl_asp_mixer =
+ 	SOC_DAPM_ENUM("Route", esl_asp_enum);
+ 
+ static const struct soc_enum esl_xsp_enum =
+-	SOC_VALUE_ENUM_SINGLE(CS42L73_MMIXCTL, 0, 7,
++	SOC_VALUE_ENUM_SINGLE(CS42L73_MMIXCTL, 0, 3,
+ 			      ARRAY_SIZE(cs42l73_mono_mix_texts),
+ 			      cs42l73_mono_mix_texts,
+ 			      cs42l73_mono_mix_values);
+diff --git a/sound/soc/codecs/da732x.c b/sound/soc/codecs/da732x.c
+index dc0284d..76fdf0a 100644
+--- a/sound/soc/codecs/da732x.c
++++ b/sound/soc/codecs/da732x.c
+@@ -1268,11 +1268,23 @@ static struct snd_soc_dai_driver da732x_dai[] = {
+ 	},
+ };
+ 
++static bool da732x_volatile(struct device *dev, unsigned int reg)
++{
++	switch (reg) {
++	case DA732X_REG_HPL_DAC_OFF_CNTL:
++	case DA732X_REG_HPR_DAC_OFF_CNTL:
++		return true;
++	default:
++		return false;
++	}
++}
++
+ static const struct regmap_config da732x_regmap = {
+ 	.reg_bits		= 8,
+ 	.val_bits		= 8,
+ 
+ 	.max_register		= DA732X_MAX_REG,
++	.volatile_reg		= da732x_volatile,
+ 	.reg_defaults		= da732x_reg_cache,
+ 	.num_reg_defaults	= ARRAY_SIZE(da732x_reg_cache),
+ 	.cache_type		= REGCACHE_RBTREE,
+diff --git a/sound/soc/codecs/max98090.c b/sound/soc/codecs/max98090.c
+index 8d14a76..9b7746c 100644
+--- a/sound/soc/codecs/max98090.c
++++ b/sound/soc/codecs/max98090.c
+@@ -255,6 +255,7 @@ static struct reg_default max98090_reg[] = {
+ static bool max98090_volatile_register(struct device *dev, unsigned int reg)
+ {
+ 	switch (reg) {
++	case M98090_REG_SOFTWARE_RESET:
+ 	case M98090_REG_DEVICE_STATUS:
+ 	case M98090_REG_JACK_STATUS:
+ 	case M98090_REG_REVISION_ID:
+@@ -336,6 +337,7 @@ static bool max98090_readable_register(struct device *dev, unsigned int reg)
+ 	case M98090_REG_RECORD_TDM_SLOT:
+ 	case M98090_REG_SAMPLE_RATE:
+ 	case M98090_REG_DMIC34_BIQUAD_BASE ... M98090_REG_DMIC34_BIQUAD_BASE + 0x0E:
++	case M98090_REG_REVISION_ID:
+ 		return true;
+ 	default:
+ 		return false;
+@@ -1755,16 +1757,6 @@ static int max98090_set_bias_level(struct snd_soc_codec *codec,
+ 
+ 	switch (level) {
+ 	case SND_SOC_BIAS_ON:
+-		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
+-			ret = regcache_sync(max98090->regmap);
+-
+-			if (ret != 0) {
+-				dev_err(codec->dev,
+-					"Failed to sync cache: %d\n", ret);
+-				return ret;
+-			}
+-		}
+-
+ 		if (max98090->jack_state == M98090_JACK_STATE_HEADSET) {
+ 			/*
+ 			 * Set to normal bias level.
+@@ -1778,6 +1770,16 @@ static int max98090_set_bias_level(struct snd_soc_codec *codec,
+ 		break;
+ 
+ 	case SND_SOC_BIAS_STANDBY:
++		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
++			ret = regcache_sync(max98090->regmap);
++			if (ret != 0) {
++				dev_err(codec->dev,
++					"Failed to sync cache: %d\n", ret);
++				return ret;
++			}
++		}
++		break;
++
+ 	case SND_SOC_BIAS_OFF:
+ 		/* Set internal pull-up to lowest power mode */
+ 		snd_soc_update_bits(codec, M98090_REG_JACK_DETECT,
+@@ -2342,6 +2344,8 @@ static int max98090_runtime_resume(struct device *dev)
+ 
+ 	regcache_cache_only(max98090->regmap, false);
+ 
++	max98090_reset(max98090);
++
+ 	regcache_sync(max98090->regmap);
+ 
+ 	return 0;
+diff --git a/sound/soc/codecs/sgtl5000.c b/sound/soc/codecs/sgtl5000.c
+index ea47938..fc99b11 100644
+--- a/sound/soc/codecs/sgtl5000.c
++++ b/sound/soc/codecs/sgtl5000.c
+@@ -7,6 +7,7 @@
+  * it under the terms of the GNU General Public License version 2 as
+  * published by the Free Software Foundation.
+  */
++#define DEBUG
+ 
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+@@ -16,9 +17,11 @@
+ #include <linux/pm.h>
+ #include <linux/i2c.h>
+ #include <linux/clk.h>
++#include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
++#include <linux/regulator/fixed.h>
+ #include <linux/regulator/driver.h>
+ #include <linux/regulator/machine.h>
+-#include <linux/regulator/consumer.h>
+ #include <linux/of_device.h>
+ #include <sound/core.h>
+ #include <sound/tlv.h>
+@@ -34,30 +37,30 @@
+ #define SGTL5000_MAX_REG_OFFSET	0x013A
+ 
+ /* default value of sgtl5000 registers */
+-static const u16 sgtl5000_regs[SGTL5000_MAX_REG_OFFSET] =  {
+-	[SGTL5000_CHIP_CLK_CTRL] = 0x0008,
+-	[SGTL5000_CHIP_I2S_CTRL] = 0x0010,
+-	[SGTL5000_CHIP_SSS_CTRL] = 0x0010,
+-	[SGTL5000_CHIP_DAC_VOL] = 0x3c3c,
+-	[SGTL5000_CHIP_PAD_STRENGTH] = 0x015f,
+-	[SGTL5000_CHIP_ANA_HP_CTRL] = 0x1818,
+-	[SGTL5000_CHIP_ANA_CTRL] = 0x0111,
+-	[SGTL5000_CHIP_LINE_OUT_VOL] = 0x0404,
+-	[SGTL5000_CHIP_ANA_POWER] = 0x7060,
+-	[SGTL5000_CHIP_PLL_CTRL] = 0x5000,
+-	[SGTL5000_DAP_BASS_ENHANCE] = 0x0040,
+-	[SGTL5000_DAP_BASS_ENHANCE_CTRL] = 0x051f,
+-	[SGTL5000_DAP_SURROUND] = 0x0040,
+-	[SGTL5000_DAP_EQ_BASS_BAND0] = 0x002f,
+-	[SGTL5000_DAP_EQ_BASS_BAND1] = 0x002f,
+-	[SGTL5000_DAP_EQ_BASS_BAND2] = 0x002f,
+-	[SGTL5000_DAP_EQ_BASS_BAND3] = 0x002f,
+-	[SGTL5000_DAP_EQ_BASS_BAND4] = 0x002f,
+-	[SGTL5000_DAP_MAIN_CHAN] = 0x8000,
+-	[SGTL5000_DAP_AVC_CTRL] = 0x0510,
+-	[SGTL5000_DAP_AVC_THRESHOLD] = 0x1473,
+-	[SGTL5000_DAP_AVC_ATTACK] = 0x0028,
+-	[SGTL5000_DAP_AVC_DECAY] = 0x0050,
++static const struct reg_default sgtl5000_reg_defaults[] = {
++	{ SGTL5000_CHIP_CLK_CTRL,		0x0008 },
++	{ SGTL5000_CHIP_I2S_CTRL,		0x0010 },
++	{ SGTL5000_CHIP_SSS_CTRL,		0x0008 },
++	{ SGTL5000_CHIP_DAC_VOL,		0x3c3c },
++	{ SGTL5000_CHIP_PAD_STRENGTH,		0x015f },
++	{ SGTL5000_CHIP_ANA_HP_CTRL,		0x1818 },
++	{ SGTL5000_CHIP_ANA_CTRL,		0x0111 },
++	{ SGTL5000_CHIP_LINE_OUT_VOL,		0x0404 },
++	{ SGTL5000_CHIP_ANA_POWER,		0x7060 },
++	{ SGTL5000_CHIP_PLL_CTRL,		0x5000 },
++	{ SGTL5000_DAP_BASS_ENHANCE,		0x0040 },
++	{ SGTL5000_DAP_BASS_ENHANCE_CTRL,	0x051f },
++	{ SGTL5000_DAP_SURROUND,		0x0040 },
++	{ SGTL5000_DAP_EQ_BASS_BAND0,		0x002f },
++	{ SGTL5000_DAP_EQ_BASS_BAND1,		0x002f },
++	{ SGTL5000_DAP_EQ_BASS_BAND2,		0x002f },
++	{ SGTL5000_DAP_EQ_BASS_BAND3,		0x002f },
++	{ SGTL5000_DAP_EQ_BASS_BAND4,		0x002f },
++	{ SGTL5000_DAP_MAIN_CHAN,		0x8000 },
++	{ SGTL5000_DAP_AVC_CTRL,		0x0510 },
++	{ SGTL5000_DAP_AVC_THRESHOLD,		0x1473 },
++	{ SGTL5000_DAP_AVC_ATTACK,		0x0028 },
++	{ SGTL5000_DAP_AVC_DECAY,		0x0050 },
+ };
+ 
+ /* regulator supplies for sgtl5000, VDDD is an optional external supply */
+@@ -112,6 +115,9 @@ struct sgtl5000_priv {
+ 	int fmt;	/* i2s data format */
+ 	struct regulator_bulk_data supplies[SGTL5000_SUPPLY_NUM];
+ 	struct ldo_regulator *ldo;
++	struct regmap *regmap;
++	struct clk *mclk;
++	int revision;
+ };
+ 
+ /*
+@@ -150,16 +156,26 @@ static int mic_bias_event(struct snd_soc_dapm_widget *w,
+ static int power_vag_event(struct snd_soc_dapm_widget *w,
+ 	struct snd_kcontrol *kcontrol, int event)
+ {
++	const u32 mask = SGTL5000_DAC_POWERUP | SGTL5000_ADC_POWERUP;
++
+ 	switch (event) {
+-	case SND_SOC_DAPM_PRE_PMU:
++	case SND_SOC_DAPM_POST_PMU:
+ 		snd_soc_update_bits(w->codec, SGTL5000_CHIP_ANA_POWER,
+ 			SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
+ 		break;
+ 
+-	case SND_SOC_DAPM_POST_PMD:
+-		snd_soc_update_bits(w->codec, SGTL5000_CHIP_ANA_POWER,
+-			SGTL5000_VAG_POWERUP, 0);
+-		msleep(400);
++	case SND_SOC_DAPM_PRE_PMD:
++		/*
++		 * Don't clear VAG_POWERUP, when both DAC and ADC are
++		 * operational to prevent inadvertently starving the
++		 * other one of them.
++		 */
++		if ((snd_soc_read(w->codec, SGTL5000_CHIP_ANA_POWER) &
++				mask) != mask) {
++			snd_soc_update_bits(w->codec, SGTL5000_CHIP_ANA_POWER,
++				SGTL5000_VAG_POWERUP, 0);
++			msleep(400);
++		}
+ 		break;
+ 	default:
+ 		break;
+@@ -217,12 +233,11 @@ static const struct snd_soc_dapm_widget sgtl5000_dapm_widgets[] = {
+ 				0, SGTL5000_CHIP_DIG_POWER,
+ 				1, 0),
+ 
+-	SND_SOC_DAPM_SUPPLY("VAG_POWER", SGTL5000_CHIP_ANA_POWER, 7, 0,
+-			    power_vag_event,
+-			    SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+-
+ 	SND_SOC_DAPM_ADC("ADC", "Capture", SGTL5000_CHIP_ANA_POWER, 1, 0),
+ 	SND_SOC_DAPM_DAC("DAC", "Playback", SGTL5000_CHIP_ANA_POWER, 3, 0),
++
++	SND_SOC_DAPM_PRE("VAG_POWER_PRE", power_vag_event),
++	SND_SOC_DAPM_POST("VAG_POWER_POST", power_vag_event),
+ };
+ 
+ /* routes for sgtl5000 */
+@@ -230,16 +245,13 @@ static const struct snd_soc_dapm_route sgtl5000_dapm_routes[] = {
+ 	{"Capture Mux", "LINE_IN", "LINE_IN"},	/* line_in --> adc_mux */
+ 	{"Capture Mux", "MIC_IN", "MIC_IN"},	/* mic_in --> adc_mux */
+ 
+-	{"ADC", NULL, "VAG_POWER"},
+ 	{"ADC", NULL, "Capture Mux"},		/* adc_mux --> adc */
+ 	{"AIFOUT", NULL, "ADC"},		/* adc --> i2s_out */
+ 
+-	{"DAC", NULL, "VAG_POWER"},
+ 	{"DAC", NULL, "AIFIN"},			/* i2s-->dac,skip audio mux */
+ 	{"Headphone Mux", "DAC", "DAC"},	/* dac --> hp_mux */
+ 	{"LO", NULL, "DAC"},			/* dac --> line_out */
+ 
+-	{"LINE_IN", NULL, "VAG_POWER"},
+ 	{"Headphone Mux", "LINE_IN", "LINE_IN"},/* line_in --> hp_mux */
+ 	{"HP", NULL, "Headphone Mux"},		/* hp_mux --> hp */
+ 
+@@ -389,7 +401,7 @@ static const struct snd_kcontrol_new sgtl5000_snd_controls[] = {
+ 	SOC_DOUBLE("Capture Volume", SGTL5000_CHIP_ANA_ADC_CTRL, 0, 4, 0xf, 0),
+ 	SOC_SINGLE_TLV("Capture Attenuate Switch (-6dB)",
+ 			SGTL5000_CHIP_ANA_ADC_CTRL,
+-			8, 2, 0, capture_6db_attenuate),
++			8, 1, 0, capture_6db_attenuate),
+ 	SOC_SINGLE("Capture ZC Switch", SGTL5000_CHIP_ANA_CTRL, 1, 1, 0),
+ 
+ 	SOC_DOUBLE_TLV("Headphone Playback Volume",
+@@ -645,16 +657,19 @@ static int sgtl5000_set_clock(struct snd_soc_codec *codec, int frame_rate)
+ 		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+ 			SGTL5000_PLL_POWERUP | SGTL5000_VCOAMP_POWERUP,
+ 			SGTL5000_PLL_POWERUP | SGTL5000_VCOAMP_POWERUP);
++
++		/* if using pll, clk_ctrl must be set after pll power up */
++		snd_soc_write(codec, SGTL5000_CHIP_CLK_CTRL, clk_ctl);
+ 	} else {
++		/* otherwise, clk_ctrl must be set before pll power down */
++		snd_soc_write(codec, SGTL5000_CHIP_CLK_CTRL, clk_ctl);
++
+ 		/* power down pll */
+ 		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+ 			SGTL5000_PLL_POWERUP | SGTL5000_VCOAMP_POWERUP,
+ 			0);
+ 	}
+ 
+-	/* if using pll, clk_ctrl must be set after pll power up */
+-	snd_soc_write(codec, SGTL5000_CHIP_CLK_CTRL, clk_ctl);
+-
+ 	return 0;
+ }
+ 
+@@ -744,6 +759,7 @@ static int ldo_regulator_enable(struct regulator_dev *dev)
+ 	struct snd_soc_codec *codec = (struct snd_soc_codec *)ldo->codec_data;
+ 	int reg;
+ 
++	dev_info(codec->dev, "%s(): enabled %u\n", __func__, ldo->enabled);
+ 	if (ldo_regulator_is_enabled(dev))
+ 		return 0;
+ 
+@@ -775,10 +791,16 @@ static int ldo_regulator_disable(struct regulator_dev *dev)
+ {
+ 	struct ldo_regulator *ldo = rdev_get_drvdata(dev);
+ 	struct snd_soc_codec *codec = (struct snd_soc_codec *)ldo->codec_data;
++dev_info(codec->dev, "%s(): enabled %u\n", __func__, ldo->enabled);
++
++	snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
++				SGTL5000_LINREG_SIMPLE_POWERUP,
++				SGTL5000_LINREG_SIMPLE_POWERUP);
+ 
+ 	snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+ 				SGTL5000_LINEREG_D_POWERUP,
+ 				0);
++dev_info(codec->dev, "%s: ANA_POWER = 0x%04x\n", __func__, snd_soc_read(codec, SGTL5000_CHIP_ANA_POWER));
+ 
+ 	/* clear voltage info */
+ 	snd_soc_update_bits(codec, SGTL5000_CHIP_LINREG_CTRL,
+@@ -811,6 +833,7 @@ static int ldo_regulator_register(struct snd_soc_codec *codec,
+ 	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
+ 	struct regulator_config config = { };
+ 
++	dev_dbg(codec->dev, "%s:\n", __FUNCTION__);
+ 	ldo = kzalloc(sizeof(struct ldo_regulator), GFP_KERNEL);
+ 
+ 	if (!ldo) {
+@@ -836,6 +859,7 @@ static int ldo_regulator_register(struct snd_soc_codec *codec,
+ 	config.dev = codec->dev;
+ 	config.driver_data = ldo;
+ 	config.init_data = init_data;
++	config.ena_gpio = -EINVAL;
+ 
+ 	ldo->dev = regulator_register(&ldo->desc, &config);
+ 	if (IS_ERR(ldo->dev)) {
+@@ -909,10 +933,25 @@ static int sgtl5000_set_bias_level(struct snd_soc_codec *codec,
+ 			if (ret)
+ 				return ret;
+ 			udelay(10);
++
++			regcache_cache_only(sgtl5000->regmap, false);
++
++			ret = regcache_sync(sgtl5000->regmap);
++			if (ret != 0) {
++				dev_err(codec->dev,
++					"Failed to restore cache: %d\n", ret);
++
++				regcache_cache_only(sgtl5000->regmap, true);
++				regulator_bulk_disable(ARRAY_SIZE(sgtl5000->supplies),
++						       sgtl5000->supplies);
++
++				return ret;
++			}
+ 		}
+ 
+ 		break;
+ 	case SND_SOC_BIAS_OFF:
++		regcache_cache_only(sgtl5000->regmap, true);
+ 		regulator_bulk_disable(ARRAY_SIZE(sgtl5000->supplies),
+ 					sgtl5000->supplies);
+ 		break;
+@@ -958,17 +997,76 @@ static struct snd_soc_dai_driver sgtl5000_dai = {
+ 	.symmetric_rates = 1,
+ };
+ 
+-static int sgtl5000_volatile_register(struct snd_soc_codec *codec,
+-					unsigned int reg)
++static bool sgtl5000_volatile(struct device *dev, unsigned int reg)
+ {
+ 	switch (reg) {
+ 	case SGTL5000_CHIP_ID:
+ 	case SGTL5000_CHIP_ADCDAC_CTRL:
+ 	case SGTL5000_CHIP_ANA_STATUS:
+-		return 1;
++		return true;
+ 	}
+ 
+-	return 0;
++	return false;
++}
++
++static bool sgtl5000_readable(struct device *dev, unsigned int reg)
++{
++	switch (reg) {
++	case SGTL5000_CHIP_ID:
++	case SGTL5000_CHIP_DIG_POWER:
++	case SGTL5000_CHIP_CLK_CTRL:
++	case SGTL5000_CHIP_I2S_CTRL:
++	case SGTL5000_CHIP_SSS_CTRL:
++	case SGTL5000_CHIP_ADCDAC_CTRL:
++	case SGTL5000_CHIP_DAC_VOL:
++	case SGTL5000_CHIP_PAD_STRENGTH:
++	case SGTL5000_CHIP_ANA_ADC_CTRL:
++	case SGTL5000_CHIP_ANA_HP_CTRL:
++	case SGTL5000_CHIP_ANA_CTRL:
++	case SGTL5000_CHIP_LINREG_CTRL:
++	case SGTL5000_CHIP_REF_CTRL:
++	case SGTL5000_CHIP_MIC_CTRL:
++	case SGTL5000_CHIP_LINE_OUT_CTRL:
++	case SGTL5000_CHIP_LINE_OUT_VOL:
++	case SGTL5000_CHIP_ANA_POWER:
++	case SGTL5000_CHIP_PLL_CTRL:
++	case SGTL5000_CHIP_CLK_TOP_CTRL:
++	case SGTL5000_CHIP_ANA_STATUS:
++	case SGTL5000_CHIP_SHORT_CTRL:
++	case SGTL5000_CHIP_ANA_TEST2:
++	case SGTL5000_DAP_CTRL:
++	case SGTL5000_DAP_PEQ:
++	case SGTL5000_DAP_BASS_ENHANCE:
++	case SGTL5000_DAP_BASS_ENHANCE_CTRL:
++	case SGTL5000_DAP_AUDIO_EQ:
++	case SGTL5000_DAP_SURROUND:
++	case SGTL5000_DAP_FLT_COEF_ACCESS:
++	case SGTL5000_DAP_COEF_WR_B0_MSB:
++	case SGTL5000_DAP_COEF_WR_B0_LSB:
++	case SGTL5000_DAP_EQ_BASS_BAND0:
++	case SGTL5000_DAP_EQ_BASS_BAND1:
++	case SGTL5000_DAP_EQ_BASS_BAND2:
++	case SGTL5000_DAP_EQ_BASS_BAND3:
++	case SGTL5000_DAP_EQ_BASS_BAND4:
++	case SGTL5000_DAP_MAIN_CHAN:
++	case SGTL5000_DAP_MIX_CHAN:
++	case SGTL5000_DAP_AVC_CTRL:
++	case SGTL5000_DAP_AVC_THRESHOLD:
++	case SGTL5000_DAP_AVC_ATTACK:
++	case SGTL5000_DAP_AVC_DECAY:
++	case SGTL5000_DAP_COEF_WR_B1_MSB:
++	case SGTL5000_DAP_COEF_WR_B1_LSB:
++	case SGTL5000_DAP_COEF_WR_B2_MSB:
++	case SGTL5000_DAP_COEF_WR_B2_LSB:
++	case SGTL5000_DAP_COEF_WR_A1_MSB:
++	case SGTL5000_DAP_COEF_WR_A1_LSB:
++	case SGTL5000_DAP_COEF_WR_A2_MSB:
++	case SGTL5000_DAP_COEF_WR_A2_LSB:
++		return true;
++
++	default:
++		return false;
++	}
+ }
+ 
+ #ifdef CONFIG_SUSPEND
+@@ -1115,8 +1213,11 @@ static int sgtl5000_set_power_regs(struct snd_soc_codec *codec)
+ 		 * if vddio and vddd > 3.1v,
+ 		 * charge pump should be clean before set ana_pwr
+ 		 */
+-		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+-				SGTL5000_VDDC_CHRGPMP_POWERUP, 0);
++// FIXME: this is total crap - we have read this register above into
++// ana_pwr, which we then modify (above), and then write back to the
++// register below.  This modification just gets completely overwritten.
++//		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
++//				SGTL5000_VDDC_CHRGPMP_POWERUP, 0);
+ 
+ 		/* VDDC use VDDIO rail */
+ 		lreg_ctrl |= SGTL5000_VDDC_ASSN_OVRD;
+@@ -1190,6 +1291,7 @@ static int sgtl5000_replace_vddd_with_ldo(struct snd_soc_codec *codec)
+ 	int ret;
+ 
+ 	/* set internal ldo to 1.2v */
++	dev_dbg(codec->dev, "%s:\n", __FUNCTION__);
+ 	ret = ldo_regulator_register(codec, &ldo_init_data, LDO_VOLTAGE);
+ 	if (ret) {
+ 		dev_err(codec->dev,
+@@ -1199,33 +1301,24 @@ static int sgtl5000_replace_vddd_with_ldo(struct snd_soc_codec *codec)
+ 
+ 	sgtl5000->supplies[VDDD].supply = LDO_CONSUMER_NAME;
+ 
+-	ret = regulator_bulk_get(codec->dev, ARRAY_SIZE(sgtl5000->supplies),
+-			sgtl5000->supplies);
+-
+-	if (ret) {
+-		ldo_regulator_remove(codec);
+-		dev_err(codec->dev, "Failed to request supplies: %d\n", ret);
+-		return ret;
+-	}
+-
+ 	dev_info(codec->dev, "Using internal LDO instead of VDDD\n");
+ 	return 0;
+ }
+ 
+ static int sgtl5000_enable_regulators(struct snd_soc_codec *codec)
+ {
+-	u16 reg;
+ 	int ret;
+-	int rev;
+ 	int i;
+ 	int external_vddd = 0;
+ 	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
++	struct regulator *vddd;
+ 
+ 	for (i = 0; i < ARRAY_SIZE(sgtl5000->supplies); i++)
+ 		sgtl5000->supplies[i].supply = supply_names[i];
+ 
++	dev_dbg(codec->dev, "%s:\n", __FUNCTION__);
+ 	ret = regulator_bulk_get(codec->dev, ARRAY_SIZE(sgtl5000->supplies),
+-				sgtl5000->supplies);
++		sgtl5000->supplies);
+ 	if (!ret)
+ 		external_vddd = 1;
+ 	else {
+@@ -1234,61 +1327,23 @@ static int sgtl5000_enable_regulators(struct snd_soc_codec *codec)
+ 			return ret;
+ 	}
+ 
++	ret = devm_regulator_bulk_get(codec->dev, ARRAY_SIZE(sgtl5000->supplies),
++				 sgtl5000->supplies);
++	if (ret)
++		goto err_ldo_remove;
++
+ 	ret = regulator_bulk_enable(ARRAY_SIZE(sgtl5000->supplies),
+ 					sgtl5000->supplies);
+ 	if (ret)
+-		goto err_regulator_free;
++		goto err_ldo_remove;
+ 
+ 	/* wait for all power rails bring up */
+ 	udelay(10);
+ 
+-	/* read chip information */
+-	reg = snd_soc_read(codec, SGTL5000_CHIP_ID);
+-	if (((reg & SGTL5000_PARTID_MASK) >> SGTL5000_PARTID_SHIFT) !=
+-	    SGTL5000_PARTID_PART_ID) {
+-		dev_err(codec->dev,
+-			"Device with ID register %x is not a sgtl5000\n", reg);
+-		ret = -ENODEV;
+-		goto err_regulator_disable;
+-	}
+-
+-	rev = (reg & SGTL5000_REVID_MASK) >> SGTL5000_REVID_SHIFT;
+-	dev_info(codec->dev, "sgtl5000 revision 0x%x\n", rev);
+-
+-	/*
+-	 * workaround for revision 0x11 and later,
+-	 * roll back to use internal LDO
+-	 */
+-	if (external_vddd && rev >= 0x11) {
+-		/* disable all regulator first */
+-		regulator_bulk_disable(ARRAY_SIZE(sgtl5000->supplies),
+-					sgtl5000->supplies);
+-		/* free VDDD regulator */
+-		regulator_bulk_free(ARRAY_SIZE(sgtl5000->supplies),
+-					sgtl5000->supplies);
+-
+-		ret = sgtl5000_replace_vddd_with_ldo(codec);
+-		if (ret)
+-			return ret;
+-
+-		ret = regulator_bulk_enable(ARRAY_SIZE(sgtl5000->supplies),
+-						sgtl5000->supplies);
+-		if (ret)
+-			goto err_regulator_free;
+-
+-		/* wait for all power rails bring up */
+-		udelay(10);
+-	}
+-
+ 	return 0;
+ 
+-err_regulator_disable:
+-	regulator_bulk_disable(ARRAY_SIZE(sgtl5000->supplies),
+-				sgtl5000->supplies);
+-err_regulator_free:
+-	regulator_bulk_free(ARRAY_SIZE(sgtl5000->supplies),
+-				sgtl5000->supplies);
+-	if (external_vddd)
++err_ldo_remove:
++	if (!external_vddd)
+ 		ldo_regulator_remove(codec);
+ 	return ret;
+ 
+@@ -1300,12 +1355,16 @@ static int sgtl5000_probe(struct snd_soc_codec *codec)
+ 	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
+ 
+ 	/* setup i2c data ops */
+-	ret = snd_soc_codec_set_cache_io(codec, 16, 16, SND_SOC_I2C);
++	codec->control_data = sgtl5000->regmap;
++	ret = snd_soc_codec_set_cache_io(codec, 16, 16, SND_SOC_REGMAP);
+ 	if (ret < 0) {
+ 		dev_err(codec->dev, "Failed to set cache I/O: %d\n", ret);
+ 		return ret;
+ 	}
+ 
++	if (!devres_open_group(codec->dev, NULL, GFP_KERNEL))
++		return -ENOMEM;
++
+ 	ret = sgtl5000_enable_regulators(codec);
+ 	if (ret)
+ 		return ret;
+@@ -1363,8 +1422,9 @@ static int sgtl5000_probe(struct snd_soc_codec *codec)
+ err:
+ 	regulator_bulk_disable(ARRAY_SIZE(sgtl5000->supplies),
+ 						sgtl5000->supplies);
+-	regulator_bulk_free(ARRAY_SIZE(sgtl5000->supplies),
+-				sgtl5000->supplies);
++
++	devres_release_group(codec->dev, NULL);
++
+ 	ldo_regulator_remove(codec);
+ 
+ 	return ret;
+@@ -1378,8 +1438,9 @@ static int sgtl5000_remove(struct snd_soc_codec *codec)
+ 
+ 	regulator_bulk_disable(ARRAY_SIZE(sgtl5000->supplies),
+ 						sgtl5000->supplies);
+-	regulator_bulk_free(ARRAY_SIZE(sgtl5000->supplies),
+-				sgtl5000->supplies);
++
++	devres_release_group(codec->dev, NULL);
++
+ 	ldo_regulator_remove(codec);
+ 
+ 	return 0;
+@@ -1391,11 +1452,6 @@ static struct snd_soc_codec_driver sgtl5000_driver = {
+ 	.suspend = sgtl5000_suspend,
+ 	.resume = sgtl5000_resume,
+ 	.set_bias_level = sgtl5000_set_bias_level,
+-	.reg_cache_size = ARRAY_SIZE(sgtl5000_regs),
+-	.reg_word_size = sizeof(u16),
+-	.reg_cache_step = 2,
+-	.reg_cache_default = sgtl5000_regs,
+-	.volatile_register = sgtl5000_volatile_register,
+ 	.controls = sgtl5000_snd_controls,
+ 	.num_controls = ARRAY_SIZE(sgtl5000_snd_controls),
+ 	.dapm_widgets = sgtl5000_dapm_widgets,
+@@ -1404,28 +1460,119 @@ static struct snd_soc_codec_driver sgtl5000_driver = {
+ 	.num_dapm_routes = ARRAY_SIZE(sgtl5000_dapm_routes),
+ };
+ 
++static const struct regmap_config sgtl5000_regmap = {
++	.reg_bits = 16,
++	.val_bits = 16,
++	.reg_stride = 2,
++
++	.max_register = SGTL5000_MAX_REG_OFFSET,
++	.volatile_reg = sgtl5000_volatile,
++	.readable_reg = sgtl5000_readable,
++
++	.cache_type = REGCACHE_RBTREE,
++	.reg_defaults = sgtl5000_reg_defaults,
++	.num_reg_defaults = ARRAY_SIZE(sgtl5000_reg_defaults),
++};
++
++/*
++ * Write all the default values from sgtl5000_reg_defaults[] array into the
++ * sgtl5000 registers, to make sure we always start with the sane registers
++ * values as stated in the datasheet.
++ *
++ * Since sgtl5000 does not have a reset line, nor a reset command in software,
++ * we follow this approach to guarantee we always start from the default values
++ * and avoid problems like, not being able to probe after an audio playback
++ * followed by a system reset or a 'reboot' command in Linux
++ */
++static int sgtl5000_fill_defaults(struct sgtl5000_priv *sgtl5000)
++{
++	int i, ret, val, index;
++
++	for (i = 0; i < ARRAY_SIZE(sgtl5000_reg_defaults); i++) {
++		val = sgtl5000_reg_defaults[i].def;
++		index = sgtl5000_reg_defaults[i].reg;
++		ret = regmap_write(sgtl5000->regmap, index, val);
++		if (ret)
++			return ret;
++	}
++
++	return 0;
++}
++
+ static int sgtl5000_i2c_probe(struct i2c_client *client,
+ 			      const struct i2c_device_id *id)
+ {
+ 	struct sgtl5000_priv *sgtl5000;
+-	int ret;
++	int ret, reg, rev;
+ 
+ 	sgtl5000 = devm_kzalloc(&client->dev, sizeof(struct sgtl5000_priv),
+ 								GFP_KERNEL);
+ 	if (!sgtl5000)
+ 		return -ENOMEM;
+ 
++	sgtl5000->regmap = devm_regmap_init_i2c(client, &sgtl5000_regmap);
++	if (IS_ERR(sgtl5000->regmap)) {
++		ret = PTR_ERR(sgtl5000->regmap);
++		dev_err(&client->dev, "Failed to allocate regmap: %d\n", ret);
++		return ret;
++	}
++
++	sgtl5000->mclk = devm_clk_get(&client->dev, NULL);
++	if (IS_ERR(sgtl5000->mclk)) {
++		ret = PTR_ERR(sgtl5000->mclk);
++		dev_err(&client->dev, "Failed to get mclock: %d\n", ret);
++		/* Defer the probe to see if the clk will be provided later */
++		if (ret == -ENOENT)
++			return -EPROBE_DEFER;
++		return ret;
++	}
++
++	ret = clk_prepare_enable(sgtl5000->mclk);
++	if (ret)
++		return ret;
++
++	/* read chip information */
++	ret = regmap_read(sgtl5000->regmap, SGTL5000_CHIP_ID, &reg);
++	if (ret)
++		goto disable_clk;
++
++	if (((reg & SGTL5000_PARTID_MASK) >> SGTL5000_PARTID_SHIFT) !=
++	    SGTL5000_PARTID_PART_ID) {
++		dev_err(&client->dev,
++			"Device with ID register %x is not a sgtl5000\n", reg);
++		ret = -ENODEV;
++		goto disable_clk;
++	}
++
++	/* Ensure sgtl5000 will start with sane register values */
++	ret = sgtl5000_fill_defaults(sgtl5000);
++	if (ret)
++		goto disable_clk;
++
++	rev = (reg & SGTL5000_REVID_MASK) >> SGTL5000_REVID_SHIFT;
++	dev_info(&client->dev, "sgtl5000 revision 0x%x\n", rev);
++	sgtl5000->revision = rev;
++
+ 	i2c_set_clientdata(client, sgtl5000);
+ 
+ 	ret = snd_soc_register_codec(&client->dev,
+ 			&sgtl5000_driver, &sgtl5000_dai, 1);
++	if (ret)
++		goto disable_clk;
++
++	return 0;
++
++disable_clk:
++	clk_disable_unprepare(sgtl5000->mclk);
+ 	return ret;
+ }
+ 
+ static int sgtl5000_i2c_remove(struct i2c_client *client)
+ {
+-	snd_soc_unregister_codec(&client->dev);
++	struct sgtl5000_priv *sgtl5000 = i2c_get_clientdata(client);
+ 
++	snd_soc_unregister_codec(&client->dev);
++	clk_disable_unprepare(sgtl5000->mclk);
+ 	return 0;
+ }
+ 
+diff --git a/sound/soc/codecs/spdif_transmitter.c b/sound/soc/codecs/spdif_transmitter.c
+index 823db61..8906f03 100644
+--- a/sound/soc/codecs/spdif_transmitter.c
++++ b/sound/soc/codecs/spdif_transmitter.c
+@@ -17,14 +17,13 @@
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/slab.h>
+-#include <linux/of_device.h>
+ #include <sound/soc.h>
+ #include <sound/pcm.h>
+ #include <sound/initval.h>
+ 
+ #define DRV_NAME "spdif-dit"
+ 
+-#define STUB_RATES	SNDRV_PCM_RATE_8000_96000
++#define STUB_RATES	SNDRV_PCM_RATE_8000_192000
+ #define STUB_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
+ 			SNDRV_PCM_FMTBIT_S20_3LE | \
+ 			SNDRV_PCM_FMTBIT_S24_LE)
+@@ -54,18 +53,12 @@ static int spdif_dit_remove(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-static const struct of_device_id spdif_dit_dt_ids[] = {
+-	{ .compatible = "linux,spdif-dit"},
+-	{ }
+-};
+-
+ static struct platform_driver spdif_dit_driver = {
+ 	.probe		= spdif_dit_probe,
+ 	.remove		= spdif_dit_remove,
+ 	.driver		= {
+ 		.name	= DRV_NAME,
+ 		.owner	= THIS_MODULE,
+-		.of_match_table = spdif_dit_dt_ids,
+ 	},
+ };
+ 
+diff --git a/sound/soc/codecs/sta32x.c b/sound/soc/codecs/sta32x.c
+index cfb55fe..8517e70 100644
+--- a/sound/soc/codecs/sta32x.c
++++ b/sound/soc/codecs/sta32x.c
+@@ -187,42 +187,42 @@ static const unsigned int sta32x_limiter_drc_release_tlv[] = {
+ 	13, 16, TLV_DB_SCALE_ITEM(-1500, 300, 0),
+ };
+ 
+-static const struct soc_enum sta32x_drc_ac_enum =
+-	SOC_ENUM_SINGLE(STA32X_CONFD, STA32X_CONFD_DRC_SHIFT,
+-			2, sta32x_drc_ac);
+-static const struct soc_enum sta32x_auto_eq_enum =
+-	SOC_ENUM_SINGLE(STA32X_AUTO1, STA32X_AUTO1_AMEQ_SHIFT,
+-			3, sta32x_auto_eq_mode);
+-static const struct soc_enum sta32x_auto_gc_enum =
+-	SOC_ENUM_SINGLE(STA32X_AUTO1, STA32X_AUTO1_AMGC_SHIFT,
+-			4, sta32x_auto_gc_mode);
+-static const struct soc_enum sta32x_auto_xo_enum =
+-	SOC_ENUM_SINGLE(STA32X_AUTO2, STA32X_AUTO2_XO_SHIFT,
+-			16, sta32x_auto_xo_mode);
+-static const struct soc_enum sta32x_preset_eq_enum =
+-	SOC_ENUM_SINGLE(STA32X_AUTO3, STA32X_AUTO3_PEQ_SHIFT,
+-			32, sta32x_preset_eq_mode);
+-static const struct soc_enum sta32x_limiter_ch1_enum =
+-	SOC_ENUM_SINGLE(STA32X_C1CFG, STA32X_CxCFG_LS_SHIFT,
+-			3, sta32x_limiter_select);
+-static const struct soc_enum sta32x_limiter_ch2_enum =
+-	SOC_ENUM_SINGLE(STA32X_C2CFG, STA32X_CxCFG_LS_SHIFT,
+-			3, sta32x_limiter_select);
+-static const struct soc_enum sta32x_limiter_ch3_enum =
+-	SOC_ENUM_SINGLE(STA32X_C3CFG, STA32X_CxCFG_LS_SHIFT,
+-			3, sta32x_limiter_select);
+-static const struct soc_enum sta32x_limiter1_attack_rate_enum =
+-	SOC_ENUM_SINGLE(STA32X_L1AR, STA32X_LxA_SHIFT,
+-			16, sta32x_limiter_attack_rate);
+-static const struct soc_enum sta32x_limiter2_attack_rate_enum =
+-	SOC_ENUM_SINGLE(STA32X_L2AR, STA32X_LxA_SHIFT,
+-			16, sta32x_limiter_attack_rate);
+-static const struct soc_enum sta32x_limiter1_release_rate_enum =
+-	SOC_ENUM_SINGLE(STA32X_L1AR, STA32X_LxR_SHIFT,
+-			16, sta32x_limiter_release_rate);
+-static const struct soc_enum sta32x_limiter2_release_rate_enum =
+-	SOC_ENUM_SINGLE(STA32X_L2AR, STA32X_LxR_SHIFT,
+-			16, sta32x_limiter_release_rate);
++static SOC_ENUM_SINGLE_DECL(sta32x_drc_ac_enum,
++			    STA32X_CONFD, STA32X_CONFD_DRC_SHIFT,
++			    sta32x_drc_ac);
++static SOC_ENUM_SINGLE_DECL(sta32x_auto_eq_enum,
++			    STA32X_AUTO1, STA32X_AUTO1_AMEQ_SHIFT,
++			    sta32x_auto_eq_mode);
++static SOC_ENUM_SINGLE_DECL(sta32x_auto_gc_enum,
++			    STA32X_AUTO1, STA32X_AUTO1_AMGC_SHIFT,
++			    sta32x_auto_gc_mode);
++static SOC_ENUM_SINGLE_DECL(sta32x_auto_xo_enum,
++			    STA32X_AUTO2, STA32X_AUTO2_XO_SHIFT,
++			    sta32x_auto_xo_mode);
++static SOC_ENUM_SINGLE_DECL(sta32x_preset_eq_enum,
++			    STA32X_AUTO3, STA32X_AUTO3_PEQ_SHIFT,
++			    sta32x_preset_eq_mode);
++static SOC_ENUM_SINGLE_DECL(sta32x_limiter_ch1_enum,
++			    STA32X_C1CFG, STA32X_CxCFG_LS_SHIFT,
++			    sta32x_limiter_select);
++static SOC_ENUM_SINGLE_DECL(sta32x_limiter_ch2_enum,
++			    STA32X_C2CFG, STA32X_CxCFG_LS_SHIFT,
++			    sta32x_limiter_select);
++static SOC_ENUM_SINGLE_DECL(sta32x_limiter_ch3_enum,
++			    STA32X_C3CFG, STA32X_CxCFG_LS_SHIFT,
++			    sta32x_limiter_select);
++static SOC_ENUM_SINGLE_DECL(sta32x_limiter1_attack_rate_enum,
++			    STA32X_L1AR, STA32X_LxA_SHIFT,
++			    sta32x_limiter_attack_rate);
++static SOC_ENUM_SINGLE_DECL(sta32x_limiter2_attack_rate_enum,
++			    STA32X_L2AR, STA32X_LxA_SHIFT,
++			    sta32x_limiter_attack_rate);
++static SOC_ENUM_SINGLE_DECL(sta32x_limiter1_release_rate_enum,
++			    STA32X_L1AR, STA32X_LxR_SHIFT,
++			    sta32x_limiter_release_rate);
++static SOC_ENUM_SINGLE_DECL(sta32x_limiter2_release_rate_enum,
++			    STA32X_L2AR, STA32X_LxR_SHIFT,
++			    sta32x_limiter_release_rate);
+ 
+ /* byte array controls for setting biquad, mixer, scaling coefficients;
+  * for biquads all five coefficients need to be set in one go,
+@@ -331,7 +331,7 @@ static int sta32x_sync_coef_shadow(struct snd_soc_codec *codec)
+ 
+ static int sta32x_cache_sync(struct snd_soc_codec *codec)
+ {
+-	struct sta32x_priv *sta32x = codec->control_data;
++	struct sta32x_priv *sta32x = snd_soc_codec_get_drvdata(codec);
+ 	unsigned int mute;
+ 	int rc;
+ 
+@@ -432,7 +432,7 @@ SOC_SINGLE_TLV("Treble Tone Control", STA32X_TONE, STA32X_TONE_TTC_SHIFT, 15, 0,
+ SOC_ENUM("Limiter1 Attack Rate (dB/ms)", sta32x_limiter1_attack_rate_enum),
+ SOC_ENUM("Limiter2 Attack Rate (dB/ms)", sta32x_limiter2_attack_rate_enum),
+ SOC_ENUM("Limiter1 Release Rate (dB/ms)", sta32x_limiter1_release_rate_enum),
+-SOC_ENUM("Limiter2 Release Rate (dB/ms)", sta32x_limiter1_release_rate_enum),
++SOC_ENUM("Limiter2 Release Rate (dB/ms)", sta32x_limiter2_release_rate_enum),
+ 
+ /* depending on mode, the attack/release thresholds have
+  * two different enum definitions; provide both
+diff --git a/sound/soc/codecs/wm8770.c b/sound/soc/codecs/wm8770.c
+index 89a18d8..5bce210 100644
+--- a/sound/soc/codecs/wm8770.c
++++ b/sound/soc/codecs/wm8770.c
+@@ -196,8 +196,8 @@ static const char *ain_text[] = {
+ 	"AIN5", "AIN6", "AIN7", "AIN8"
+ };
+ 
+-static const struct soc_enum ain_enum =
+-	SOC_ENUM_DOUBLE(WM8770_ADCMUX, 0, 4, 8, ain_text);
++static SOC_ENUM_DOUBLE_DECL(ain_enum,
++			    WM8770_ADCMUX, 0, 4, ain_text);
+ 
+ static const struct snd_kcontrol_new ain_mux =
+ 	SOC_DAPM_ENUM("Capture Mux", ain_enum);
+diff --git a/sound/soc/codecs/wm8958-dsp2.c b/sound/soc/codecs/wm8958-dsp2.c
+index b0710d8..754f88e 100644
+--- a/sound/soc/codecs/wm8958-dsp2.c
++++ b/sound/soc/codecs/wm8958-dsp2.c
+@@ -153,7 +153,7 @@ static int wm8958_dsp2_fw(struct snd_soc_codec *codec, const char *name,
+ 
+ 			data32 &= 0xffffff;
+ 
+-			wm8994_bulk_write(codec->control_data,
++			wm8994_bulk_write(wm8994->wm8994,
+ 					  data32 & 0xffffff,
+ 					  block_len / 2,
+ 					  (void *)(data + 8));
+diff --git a/sound/soc/codecs/wm8962.c b/sound/soc/codecs/wm8962.c
+index 6bc274e..35addac 100644
+--- a/sound/soc/codecs/wm8962.c
++++ b/sound/soc/codecs/wm8962.c
+@@ -155,6 +155,7 @@ static struct reg_default wm8962_reg[] = {
+ 	{ 40, 0x0000 },   /* R40    - SPKOUTL volume */
+ 	{ 41, 0x0000 },   /* R41    - SPKOUTR volume */
+ 
++	{ 49, 0x0010 },   /* R49    - Class D Control 1 */
+ 	{ 51, 0x0003 },   /* R51    - Class D Control 2 */
+ 
+ 	{ 56, 0x0506 },   /* R56    - Clocking 4 */
+@@ -796,7 +797,6 @@ static bool wm8962_volatile_register(struct device *dev, unsigned int reg)
+ 	case WM8962_ALC2:
+ 	case WM8962_THERMAL_SHUTDOWN_STATUS:
+ 	case WM8962_ADDITIONAL_CONTROL_4:
+-	case WM8962_CLASS_D_CONTROL_1:
+ 	case WM8962_DC_SERVO_6:
+ 	case WM8962_INTERRUPT_STATUS_1:
+ 	case WM8962_INTERRUPT_STATUS_2:
+@@ -2902,13 +2902,22 @@ static int wm8962_set_fll(struct snd_soc_codec *codec, int fll_id, int source,
+ static int wm8962_mute(struct snd_soc_dai *dai, int mute)
+ {
+ 	struct snd_soc_codec *codec = dai->codec;
+-	int val;
++	int val, ret;
+ 
+ 	if (mute)
+-		val = WM8962_DAC_MUTE;
++		val = WM8962_DAC_MUTE | WM8962_DAC_MUTE_ALT;
+ 	else
+ 		val = 0;
+ 
++	/**
++	 * The DAC mute bit is mirrored in two registers, update both to keep
++	 * the register cache consistent.
++	 */
++	ret = snd_soc_update_bits(codec, WM8962_CLASS_D_CONTROL_1,
++				  WM8962_DAC_MUTE_ALT, val);
++	if (ret < 0)
++		return ret;
++
+ 	return snd_soc_update_bits(codec, WM8962_ADC_DAC_CONTROL_1,
+ 				   WM8962_DAC_MUTE, val);
+ }
+@@ -3435,7 +3444,7 @@ static int wm8962_probe(struct snd_soc_codec *codec)
+ 	/* Put the speakers into mono mode? */
+ 	if (pdata->spk_mono)
+ 		snd_soc_update_bits(codec, WM8962_CLASS_D_CONTROL_2,
+-				WM8962_SPK_MONO_MASK, WM8962_SPK_MONO);
++			WM8962_SPK_MONO_MASK, WM8962_SPK_MONO);
+ 
+ 	/* Micbias setup, detection enable and detection
+ 	 * threasholds. */
+@@ -3755,9 +3764,9 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
+ 	if (ret < 0)
+ 		goto err_enable;
+ 
++	/* The cache-only should be turned on before we power down the codec */
+ 	regcache_cache_only(wm8962->regmap, true);
+ 
+-	/* The cache-only should be turned on before we power down the codec */
+ 	regcache_cache_only(wm8962->regmap, true);
+ 
+ 	/* The drivers should power up as needed */
+diff --git a/sound/soc/codecs/wm8962.h b/sound/soc/codecs/wm8962.h
+index a1a5d52..910aafd 100644
+--- a/sound/soc/codecs/wm8962.h
++++ b/sound/soc/codecs/wm8962.h
+@@ -1954,6 +1954,10 @@
+ #define WM8962_SPKOUTL_ENA_MASK                 0x0040  /* SPKOUTL_ENA */
+ #define WM8962_SPKOUTL_ENA_SHIFT                     6  /* SPKOUTL_ENA */
+ #define WM8962_SPKOUTL_ENA_WIDTH                     1  /* SPKOUTL_ENA */
++#define WM8962_DAC_MUTE_ALT                     0x0010  /* DAC_MUTE */
++#define WM8962_DAC_MUTE_ALT_MASK                0x0010  /* DAC_MUTE */
++#define WM8962_DAC_MUTE_ALT_SHIFT                    4  /* DAC_MUTE */
++#define WM8962_DAC_MUTE_ALT_WIDTH                    1  /* DAC_MUTE */
+ #define WM8962_SPKOUTL_PGA_MUTE                 0x0002  /* SPKOUTL_PGA_MUTE */
+ #define WM8962_SPKOUTL_PGA_MUTE_MASK            0x0002  /* SPKOUTL_PGA_MUTE */
+ #define WM8962_SPKOUTL_PGA_MUTE_SHIFT                1  /* SPKOUTL_PGA_MUTE */
+diff --git a/sound/soc/fsl/fsl_spdif.c b/sound/soc/fsl/fsl_spdif.c
+index 99480fe..52bc71d 100644
+--- a/sound/soc/fsl/fsl_spdif.c
++++ b/sound/soc/fsl/fsl_spdif.c
+@@ -324,6 +324,10 @@ static void spdif_write_channel_status(struct fsl_spdif_priv *spdif_priv)
+ 	regmap_write(regmap, REG_SPDIF_STCSCL, ch_status);
+ 
+ 	dev_dbg(&pdev->dev, "STCSCL: 0x%06x\n", ch_status);
++
++	/* Set outgoing validity off for non-audio */
++	regmap_update_bits(regmap, REG_SPDIF_SCR, SCR_VAL_MASK, 
++			   (ctrl->ch_status[0] & IEC958_AES0_NONAUDIO) ? 0 : SCR_VAL_CLEAR);
+ }
+ 
+ /* Set SPDIF PhaseConfig register for rx clock */
+@@ -369,6 +373,22 @@ static int spdif_set_sample_rate(struct snd_pcm_substream *substream,
+ 		rate = SPDIF_TXRATE_48000;
+ 		csfs = IEC958_AES3_CON_FS_48000;
+ 		break;
++	case 88200:
++		rate = SPDIF_TXRATE_88200;
++		csfs = IEC958_AES3_CON_FS_88200;
++		break;
++	case 96000:
++		rate = SPDIF_TXRATE_96000;
++		csfs = IEC958_AES3_CON_FS_96000;
++		break;
++	case 176400:
++		rate = SPDIF_TXRATE_176400;
++		csfs = IEC958_AES3_CON_FS_176400;
++		break;
++	case 192000:
++		rate = SPDIF_TXRATE_192000;
++		csfs = IEC958_AES3_CON_FS_192000;
++		break;
+ 	default:
+ 		dev_err(&pdev->dev, "unsupported sample rate %d\n", sample_rate);
+ 		return -EINVAL;
+@@ -1009,7 +1029,7 @@ static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
+ 				struct clk *clk, u64 savesub,
+ 				enum spdif_txrate index)
+ {
+-	const u32 rate[] = { 32000, 44100, 48000 };
++	const u32 rate[] = { 32000, 44100, 48000, 88200, 96000, 176400, 192000 };
+ 	u64 rate_ideal, rate_actual, sub;
+ 	u32 div, arate;
+ 
+@@ -1027,7 +1047,7 @@ static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
+ 			break;
+ 		} else if (arate / rate[index] == 1) {
+ 			/* A little bigger than expect */
+-			sub = (arate - rate[index]) * 100000;
++			sub = (u64)(arate - rate[index]) * 100000;
+ 			do_div(sub, rate[index]);
+ 			if (sub < savesub) {
+ 				savesub = sub;
+@@ -1035,7 +1055,7 @@ static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
+ 			}
+ 		} else if (rate[index] / arate == 1) {
+ 			/* A little smaller than expect */
+-			sub = (rate[index] - arate) * 100000;
++			sub = (u64)(rate[index] - arate) * 100000;
+ 			do_div(sub, rate[index]);
+ 			if (sub < savesub) {
+ 				savesub = sub;
+@@ -1050,7 +1070,7 @@ static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
+ static int fsl_spdif_probe_txclk(struct fsl_spdif_priv *spdif_priv,
+ 				enum spdif_txrate index)
+ {
+-	const u32 rate[] = { 32000, 44100, 48000 };
++	const u32 rate[] = { 32000, 44100, 48000, 88200, 96000, 176400, 192000 };
+ 	struct platform_device *pdev = spdif_priv->pdev;
+ 	struct device *dev = &pdev->dev;
+ 	u64 savesub = 100000, ret;
+@@ -1188,8 +1208,7 @@ static int fsl_spdif_probe(struct platform_device *pdev)
+ 	spin_lock_init(&ctrl->ctl_lock);
+ 
+ 	/* Init tx channel status default value */
+-	ctrl->ch_status[0] =
+-		IEC958_AES0_CON_NOT_COPYRIGHT | IEC958_AES0_CON_EMPHASIS_5015;
++	ctrl->ch_status[0] = IEC958_AES0_CON_NOT_COPYRIGHT;
+ 	ctrl->ch_status[1] = IEC958_AES1_CON_DIGDIGCONV_ID;
+ 	ctrl->ch_status[2] = 0x00;
+ 	ctrl->ch_status[3] =
+diff --git a/sound/soc/fsl/fsl_spdif.h b/sound/soc/fsl/fsl_spdif.h
+index dbbbb1e..22b9f89 100644
+--- a/sound/soc/fsl/fsl_spdif.h
++++ b/sound/soc/fsl/fsl_spdif.h
+@@ -164,8 +164,12 @@ enum spdif_txrate {
+ 	SPDIF_TXRATE_32000 = 0,
+ 	SPDIF_TXRATE_44100,
+ 	SPDIF_TXRATE_48000,
++	SPDIF_TXRATE_88200,
++	SPDIF_TXRATE_96000,
++	SPDIF_TXRATE_176400,
++	SPDIF_TXRATE_192000,
+ };
+-#define SPDIF_TXRATE_MAX		(SPDIF_TXRATE_48000 + 1)
++#define SPDIF_TXRATE_MAX		(SPDIF_TXRATE_192000 + 1)
+ 
+ 
+ #define SPDIF_CSTATUS_BYTE		6
+@@ -175,7 +179,11 @@ enum spdif_txrate {
+ 
+ #define FSL_SPDIF_RATES_PLAYBACK	(SNDRV_PCM_RATE_32000 |	\
+ 					 SNDRV_PCM_RATE_44100 |	\
+-					 SNDRV_PCM_RATE_48000)
++					 SNDRV_PCM_RATE_48000 |	\
++					 SNDRV_PCM_RATE_88200 |	\
++					 SNDRV_PCM_RATE_96000 |	\
++					 SNDRV_PCM_RATE_176400|	\
++					 SNDRV_PCM_RATE_192000)
+ 
+ #define FSL_SPDIF_RATES_CAPTURE		(SNDRV_PCM_RATE_16000 | \
+ 					 SNDRV_PCM_RATE_32000 |	\
+diff --git a/sound/soc/fsl/imx-audmux.c b/sound/soc/fsl/imx-audmux.c
+index 47f046a..ac86993 100644
+--- a/sound/soc/fsl/imx-audmux.c
++++ b/sound/soc/fsl/imx-audmux.c
+@@ -26,7 +26,6 @@
+ #include <linux/of_device.h>
+ #include <linux/platform_device.h>
+ #include <linux/slab.h>
+-#include <linux/pinctrl/consumer.h>
+ 
+ #include "imx-audmux.h"
+ 
+@@ -67,15 +66,15 @@ static ssize_t audmux_read_file(struct file *file, char __user *user_buf,
+ 				size_t count, loff_t *ppos)
+ {
+ 	ssize_t ret;
+-	char *buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
++	char *buf;
+ 	int port = (int)file->private_data;
+ 	u32 pdcr, ptcr;
+ 
+-	if (!buf)
+-		return -ENOMEM;
+-
+-	if (audmux_clk)
+-		clk_prepare_enable(audmux_clk);
++	if (audmux_clk) {
++		ret = clk_prepare_enable(audmux_clk);
++		if (ret)
++			return ret;
++	}
+ 
+ 	ptcr = readl(audmux_base + IMX_AUDMUX_V2_PTCR(port));
+ 	pdcr = readl(audmux_base + IMX_AUDMUX_V2_PDCR(port));
+@@ -83,6 +82,10 @@ static ssize_t audmux_read_file(struct file *file, char __user *user_buf,
+ 	if (audmux_clk)
+ 		clk_disable_unprepare(audmux_clk);
+ 
++	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
++	if (!buf)
++		return -ENOMEM;
++
+ 	ret = snprintf(buf, PAGE_SIZE, "PDCR: %08x\nPTCR: %08x\n",
+ 		       pdcr, ptcr);
+ 
+@@ -225,14 +228,19 @@ EXPORT_SYMBOL_GPL(imx_audmux_v1_configure_port);
+ int imx_audmux_v2_configure_port(unsigned int port, unsigned int ptcr,
+ 		unsigned int pdcr)
+ {
++	int ret;
++
+ 	if (audmux_type != IMX31_AUDMUX)
+ 		return -EINVAL;
+ 
+ 	if (!audmux_base)
+ 		return -ENOSYS;
+ 
+-	if (audmux_clk)
+-		clk_prepare_enable(audmux_clk);
++	if (audmux_clk) {
++		ret = clk_prepare_enable(audmux_clk);
++		if (ret)
++			return ret;
++	}
+ 
+ 	writel(ptcr, audmux_base + IMX_AUDMUX_V2_PTCR(port));
+ 	writel(pdcr, audmux_base + IMX_AUDMUX_V2_PDCR(port));
+@@ -244,10 +252,69 @@ int imx_audmux_v2_configure_port(unsigned int port, unsigned int ptcr,
+ }
+ EXPORT_SYMBOL_GPL(imx_audmux_v2_configure_port);
+ 
++static int imx_audmux_parse_dt_defaults(struct platform_device *pdev,
++		struct device_node *of_node)
++{
++	struct device_node *child;
++
++	for_each_available_child_of_node(of_node, child) {
++		unsigned int port;
++		unsigned int ptcr = 0;
++		unsigned int pdcr = 0;
++		unsigned int pcr = 0;
++		unsigned int val;
++		int ret;
++		int i = 0;
++
++		ret = of_property_read_u32(child, "fsl,audmux-port", &port);
++		if (ret) {
++			dev_warn(&pdev->dev, "Failed to get fsl,audmux-port of child node \"%s\"\n",
++					child->full_name);
++			continue;
++		}
++		if (!of_property_read_bool(child, "fsl,port-config")) {
++			dev_warn(&pdev->dev, "child node \"%s\" does not have property fsl,port-config\n",
++					child->full_name);
++			continue;
++		}
++
++		for (i = 0; (ret = of_property_read_u32_index(child,
++					"fsl,port-config", i, &val)) == 0;
++				++i) {
++			if (audmux_type == IMX31_AUDMUX) {
++				if (i % 2)
++					pdcr |= val;
++				else
++					ptcr |= val;
++			} else {
++				pcr |= val;
++			}
++		}
++
++		if (ret != -EOVERFLOW) {
++			dev_err(&pdev->dev, "Failed to read u32 at index %d of child %s\n",
++					i, child->full_name);
++			continue;
++		}
++
++		if (audmux_type == IMX31_AUDMUX) {
++			if (i % 2) {
++				dev_err(&pdev->dev, "One pdcr value is missing in child node %s\n",
++						child->full_name);
++				continue;
++			}
++			imx_audmux_v2_configure_port(port, ptcr, pdcr);
++		} else {
++			imx_audmux_v1_configure_port(port, pcr);
++		}
++	}
++
++	return 0;
++}
++
+ static int imx_audmux_probe(struct platform_device *pdev)
+ {
+ 	struct resource *res;
+-	struct pinctrl *pinctrl;
+ 	const struct of_device_id *of_id =
+ 			of_match_device(imx_audmux_dt_ids, &pdev->dev);
+ 
+@@ -256,12 +323,6 @@ static int imx_audmux_probe(struct platform_device *pdev)
+ 	if (IS_ERR(audmux_base))
+ 		return PTR_ERR(audmux_base);
+ 
+-	pinctrl = devm_pinctrl_get_select_default(&pdev->dev);
+-	if (IS_ERR(pinctrl)) {
+-		dev_err(&pdev->dev, "setup pinctrl failed!");
+-		return PTR_ERR(pinctrl);
+-	}
+-
+ 	audmux_clk = devm_clk_get(&pdev->dev, "audmux");
+ 	if (IS_ERR(audmux_clk)) {
+ 		dev_dbg(&pdev->dev, "cannot get clock: %ld\n",
+@@ -275,6 +336,9 @@ static int imx_audmux_probe(struct platform_device *pdev)
+ 	if (audmux_type == IMX31_AUDMUX)
+ 		audmux_debugfs_init();
+ 
++	if (of_id)
++		imx_audmux_parse_dt_defaults(pdev, pdev->dev.of_node);
++
+ 	return 0;
+ }
+ 
+diff --git a/sound/soc/fsl/imx-hdmi-dma.c b/sound/soc/fsl/imx-hdmi-dma.c
+index 4155122..73fbbbc 100644
+--- a/sound/soc/fsl/imx-hdmi-dma.c
++++ b/sound/soc/fsl/imx-hdmi-dma.c
+@@ -1,7 +1,7 @@
+ /*
+  * imx-hdmi-dma.c  --  HDMI DMA driver for ALSA Soc Audio Layer
+  *
+- * Copyright (C) 2011-2013 Freescale Semiconductor, Inc.
++ * Copyright (C) 2011-2014 Freescale Semiconductor, Inc.
+  *
+  * based on imx-pcm-dma-mx2.c
+  * Copyright 2009 Sascha Hauer <s.hauer@pengutronix.de>
+@@ -79,6 +79,26 @@ struct hdmi_dma_priv {
+ /* max 8 channels supported; channels are interleaved */
+ static u8 g_packet_head_table[48 * 8];
+ 
++/* channel remapping for hdmi_dma_copy_xxxx() */
++static u8 g_channel_remap_table[24];
++
++/* default mapping tables */
++static const u8 channel_maps_alsa_cea[5][8] = {
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 0CH: no remapping */
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 2CH: no remapping */
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 4CH: no remapping */
++	{ 0, 1, 4, 5, 3, 2, 6, 7 },	/* 6CH: ALSA5.1 to CEA */
++	{ 0, 1, 6, 7, 3, 2, 4, 5 }	/* 8CH: ALSA7.1 to CEA */
++};
++
++static const u8 channel_maps_cea_alsa[5][8] = {
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 0CH: no remapping */
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 2CH: no remapping */
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 4CH: no remapping */
++	{ 0, 1, 5, 4, 2, 3, 6, 7 },	/* 6CH: CEA to ALSA5.1 */
++	{ 0, 1, 5, 4, 6, 7, 2, 3 }	/* 8CH: CEA to ALSA7.1 */
++};
++
+ union hdmi_audio_header_t iec_header;
+ EXPORT_SYMBOL(iec_header);
+ 
+@@ -121,9 +141,9 @@ EXPORT_SYMBOL(iec_header);
+  *    transmitted in a period, it can be continued in the next period.  This
+  *    is necessary for 6 ch.
+  */
+-#define HDMI_DMA_PERIOD_BYTES		(6144)
+-#define HDMI_DMA_BUF_SIZE		(64 * 1024)
+-#define HDMI_PCM_BUF_SIZE		(64 * 1024)
++#define HDMI_DMA_PERIOD_BYTES		(12288)
++#define HDMI_DMA_BUF_SIZE		(1280 * 1024)
++#define HDMI_PCM_BUF_SIZE		(1280 * 1024)
+ 
+ #define hdmi_audio_debug(dev, reg) \
+ 	dev_dbg(dev, #reg ": 0x%02x\n", hdmi_readb(reg))
+@@ -211,8 +231,9 @@ static void hdmi_mask(int mask)
+ 	hdmi_writeb(regval, HDMI_AHB_DMA_MASK);
+ }
+ 
+-int odd_ones(unsigned a)
++static inline int odd_ones(unsigned a)
+ {
++	a ^= a >> 16;
+ 	a ^= a >> 8;
+ 	a ^= a >> 4;
+ 	a ^= a >> 2;
+@@ -226,37 +247,45 @@ static u32 hdmi_dma_add_frame_info(struct hdmi_dma_priv *priv,
+ 				   u32 pcm_data, int subframe_idx)
+ {
+ 	union hdmi_audio_dma_data_t subframe;
++	union hdmi_audio_header_t tmp_header;
+ 
+ 	subframe.U = 0;
+-	iec_header.B.channel = subframe_idx;
+ 
+-	/* fill b (start-of-block) */
+-	subframe.B.b = (priv->frame_idx == 0) ? 1 : 0;
++	if (priv->frame_idx < 42) {
++		tmp_header = iec_header;
+ 
+-	/* fill c (channel status) */
+-	if (priv->frame_idx < 42)
+-		subframe.B.c = (iec_header.U >> priv->frame_idx) & 0x1;
+-	else
+-		subframe.B.c = 0;
++		/* fill v (validity) */
++		subframe.B.v = tmp_header.B.non_pcm;//linear_pcm;
+ 
+-	subframe.B.p = odd_ones(pcm_data);
+-	subframe.B.p ^= subframe.B.c;
+-	subframe.B.p ^= subframe.B.u;
+-	subframe.B.p ^= subframe.B.v;
++		/* fill c (channel status) */
++		if (tmp_header.B.non_pcm == 1)
++			tmp_header.B.channel = subframe_idx + 1;
++		subframe.B.c = tmp_header.U >> priv->frame_idx;
++	} else {
++		/* fill v (validity), c is always zero */
++		subframe.B.v = iec_header.B.non_pcm;//linear_pcm;
++	}
+ 
+ 	/* fill data */
+ 	if (priv->sample_bits == 16)
+-		subframe.B.data = pcm_data << 8;
+-	else
+-		subframe.B.data = pcm_data;
++		pcm_data <<= 8;
++	subframe.B.data = pcm_data;
++
++	/* fill p (parity) Note: Do not include b ! */
++	subframe.B.p = odd_ones(subframe.U);
++
++	/* fill b (start-of-block) */
++	if (priv->frame_idx == 0)
++		subframe.B.b = 1;
+ 
+ 	return subframe.U;
+ }
+ 
+ static void init_table(int channels)
+ {
++	int i, map_sel, ch;
+ 	unsigned char *p = g_packet_head_table;
+-	int i, ch = 0;
++	union hdmi_audio_header_t tmp_header = iec_header;
+ 
+ 	for (i = 0; i < 48; i++) {
+ 		int b = 0;
+@@ -266,93 +295,145 @@ static void init_table(int channels)
+ 		for (ch = 0; ch < channels; ch++) {
+ 			int c = 0;
+ 			if (i < 42) {
+-				iec_header.B.channel = ch+1;
+-				c = (iec_header.U >> i) & 0x1;
++				tmp_header.B.channel = ch + 1;
++				c = (tmp_header.U >> i) & 0x1;
+ 			}
+ 			/* preset bit p as c */
+ 			*p++ = (b << 4) | (c << 2) | (c << 3);
+ 		}
+ 	}
++
++	map_sel = channels / 2;
++	for (i = 0; i < 24; i++) {
++		g_channel_remap_table[i] = (i / channels) * channels +
++			channel_maps_cea_alsa[map_sel][i % channels];
++	}
+ }
+ 
+ /* Optimization for IEC head */
+ static void hdmi_dma_copy_16_c_lut(u16 *src, u32 *dst, int samples,
+ 				u8 *lookup_table)
+ {
+-	u32 sample, head, p;
+-	int i;
++	u32 sample, head;
++	int i = 0;
+ 
+-	for (i = 0; i < samples; i++) {
++	while (samples--) {
+ 		/* get source sample */
+-		sample = *src++;
+-
+-		/* xor every bit */
+-		p = sample ^ (sample >> 8);
+-		p ^= (p >> 4);
+-		p ^= (p >> 2);
+-		p ^= (p >> 1);
+-		p &= 1;	/* only want last bit */
+-		p <<= 3; /* bit p */
+-
+-		/* get packet header */
+-		head = *lookup_table++;
++		sample = src[g_channel_remap_table[i]];
+ 
+-		/* fix head */
+-		head ^= p;
++		/* get packet header and p-bit */
++		head = *lookup_table++ ^ (odd_ones(sample) << 3);
+ 
+-		/* store */
++		/* store sample and header */
+ 		*dst++ = (head << 24) | (sample << 8);
++
++		if (++i == 24) {
++			src += 24;
++			i = 0;
++		}
+ 	}
+ }
+ 
+ static void hdmi_dma_copy_16_c_fast(u16 *src, u32 *dst, int samples)
+ {
+-	u32 sample, p;
+-	int i;
++	u32 sample;
++	int i = 0;
++
++	while (samples--) {
++		/* get source sample */
++		sample = src[g_channel_remap_table[i]];
++
++		/* store sample and p-bit */
++		*dst++ = (odd_ones(sample) << (3+24)) | (sample << 8);
++
++		if (++i == 24) {
++			src += 24;
++			i = 0;
++		}
++	}
++}
++
++static void hdmi_dma_copy_24_c_lut(u32 *src, u32 *dst, int samples,
++				u8 *lookup_table)
++{
++	u32 sample, head;
++	int i = 0;
++
++	while (samples--) {
++		/* get source sample */
++		sample = src[g_channel_remap_table[i]] & 0x00ffffff;
++
++		/* get packet header and p-bit */
++		head = *lookup_table++ ^ (odd_ones(sample) << 3);
++
++		/* store sample and header */
++		*dst++ = (head << 24) | sample;
++
++		if (++i == 24) {
++			src += 24;
++			i = 0;
++		}
++	}
++}
++
++static void hdmi_dma_copy_24_c_fast(u32 *src, u32 *dst, int samples)
++{
++	u32 sample;
++	int i = 0;
+ 
+-	for (i = 0; i < samples; i++) {
++	while (samples--) {
+ 		/* get source sample */
+-		sample = *src++;
+-
+-		/* xor every bit */
+-		p = sample ^ (sample >> 8);
+-		p ^= (p >> 4);
+-		p ^= (p >> 2);
+-		p ^= (p >> 1);
+-		p &= 1;	/* only want last bit */
+-		p <<= 3; /* bit p */
+-
+-		/* store */
+-		*dst++ = (p << 24) | (sample << 8);
++		sample = src[g_channel_remap_table[i]] & 0x00ffffff;
++
++		/* store sample and p-bit */
++		*dst++ = (odd_ones(sample) << (3+24)) | sample;
++
++		if (++i == 24) {
++			src += 24;
++			i = 0;
++		}
+ 	}
+ }
+ 
+-static void hdmi_dma_copy_16(u16 *src, u32 *dst, int framecnt, int channelcnt)
++static void hdmi_mmap_copy(u8 *src, int samplesize, u32 *dst, int framecnt, int channelcnt)
+ {
+ 	/* split input frames into 192-frame each */
+ 	int count_in_192 = (framecnt + 191) / 192;
+ 	int i;
+ 
++	typedef void (*fn_copy_lut)(u8 *src, u32 *dst, int samples, u8 *lookup_table);
++	typedef void (*fn_copy_fast)(u8 *src, u32 *dst, int samples);
++	fn_copy_lut copy_lut;
++	fn_copy_fast copy_fast;
++
++	if (samplesize == 4) {
++		copy_lut = (fn_copy_lut)hdmi_dma_copy_24_c_lut;
++		copy_fast = (fn_copy_fast)hdmi_dma_copy_24_c_fast;
++	} else {
++		copy_lut = (fn_copy_lut)hdmi_dma_copy_16_c_lut;
++		copy_fast = (fn_copy_fast)hdmi_dma_copy_16_c_fast;
++	}
++
+ 	for (i = 0; i < count_in_192; i++) {
+ 		int count, samples;
+ 
+ 		/* handles frame index [0, 48) */
+ 		count = (framecnt < 48) ? framecnt : 48;
+ 		samples = count * channelcnt;
+-		hdmi_dma_copy_16_c_lut(src, dst, samples, g_packet_head_table);
++		copy_lut(src, dst, samples, g_packet_head_table);
+ 		framecnt -= count;
+ 		if (framecnt == 0)
+ 			break;
+ 
+-		src  += samples;
++		src  += samples * samplesize;
+ 		dst += samples;
+ 
+ 		/* handles frame index [48, 192) */
+ 		count = (framecnt < 192 - 48) ? framecnt : 192 - 48;
+ 		samples = count * channelcnt;
+-		hdmi_dma_copy_16_c_fast(src, dst, samples);
++		copy_fast(src, dst, samples);
+ 		framecnt -= count;
+-		src  += samples;
++		src  += samples * samplesize;
+ 		dst += samples;
+ 	}
+ }
+@@ -365,7 +446,6 @@ static void hdmi_dma_mmap_copy(struct snd_pcm_substream *substream,
+ 	struct hdmi_dma_priv *priv = runtime->private_data;
+ 	struct device *dev = rtd->platform->dev;
+ 	u32 framecount, *dst;
+-	u16 *src16;
+ 
+ 	framecount = count / (priv->sample_align * priv->channels);
+ 
+@@ -374,9 +454,10 @@ static void hdmi_dma_mmap_copy(struct snd_pcm_substream *substream,
+ 
+ 	switch (priv->format) {
+ 	case SNDRV_PCM_FORMAT_S16_LE:
++	case SNDRV_PCM_FORMAT_S24_LE:
+ 		/* dma_buffer is the mmapped buffer we are copying pcm from. */
+-		src16 = (u16 *)(runtime->dma_area + offset);
+-		hdmi_dma_copy_16(src16, dst, framecount, priv->channels);
++		hdmi_mmap_copy(runtime->dma_area + offset,
++			       priv->sample_align, dst, framecount, priv->channels);
+ 		break;
+ 	default:
+ 		dev_err(dev, "unsupported sample format %s\n",
+@@ -395,19 +476,17 @@ static void hdmi_dma_data_copy(struct snd_pcm_substream *substream,
+ 		return;
+ 
+ 	appl_bytes = frames_to_bytes(runtime, runtime->status->hw_ptr);
+-	if (type == 'p')
+-		appl_bytes += 2 * priv->period_bytes;
+-	offset = appl_bytes % priv->buffer_bytes;
+ 
+ 	switch (type) {
+ 	case 'p':
++		offset = (appl_bytes + 2 * priv->period_bytes) % priv->buffer_bytes;
+ 		count = priv->period_bytes;
+ 		space_to_end = priv->period_bytes;
+ 		break;
+ 	case 'b':
++		offset = appl_bytes % priv->buffer_bytes;
+ 		count = priv->buffer_bytes;
+ 		space_to_end = priv->buffer_bytes - offset;
+-
+ 		break;
+ 	default:
+ 		return;
+@@ -496,10 +575,24 @@ static int hdmi_dma_set_thrsld_incrtype(struct device *dev, int channels)
+ 	return 0;
+ }
+ 
++static void hdmi_dma_set_hbr(struct device *dev, int channels)
++{
++	u8 value = hdmi_readb(HDMI_AHB_DMA_CONF0) & (~HDMI_AHB_DMA_CONF0_HBR_MASK);
++
++	/* non audio AES and 8 channels means we have to enable HBR */
++	if ((channels == 8) &&
++	    (iec_header.B.non_pcm == 1)) {
++		value |= HDMI_AHB_DMA_CONF0_HBR_MASK;
++		dev_info(dev, "Enabling HBR");
++	}
++
++	hdmi_writeb(value, HDMI_AHB_DMA_CONF0);
++}
++
+ static int hdmi_dma_configure_dma(struct device *dev, int channels)
+ {
+-	u8 i, val = 0;
+ 	int ret;
++	static u8 chan_enable[] = { 0x00, 0x03, 0x33, 0x3f, 0xff };
+ 
+ 	if (channels <= 0 || channels > 8 || channels % 2 != 0) {
+ 		dev_err(dev, "unsupported channel number: %d\n", channels);
+@@ -512,10 +605,10 @@ static int hdmi_dma_configure_dma(struct device *dev, int channels)
+ 	if (ret)
+ 		return ret;
+ 
+-	for (i = 0; i < channels; i += 2)
+-		val |= 0x3 << i;
++	hdmi_writeb(chan_enable[channels / 2], HDMI_AHB_DMA_CONF1);
+ 
+-	hdmi_writeb(val, HDMI_AHB_DMA_CONF1);
++	/* Handle HBR */
++	hdmi_dma_set_hbr(dev, channels);
+ 
+ 	return 0;
+ }
+@@ -525,7 +618,7 @@ static void hdmi_dma_init_iec_header(void)
+ 	iec_header.U = 0;
+ 
+ 	iec_header.B.consumer = 0;		/* Consumer use */
+-	iec_header.B.linear_pcm = 0;		/* linear pcm audio */
++	iec_header.B.non_pcm = 1;		/* linear pcm audio */
+ 	iec_header.B.copyright = 1;		/* no copyright */
+ 	iec_header.B.pre_emphasis = 0;		/* 2 channels without pre-emphasis */
+ 	iec_header.B.mode = 0;			/* Mode 0 */
+@@ -614,28 +707,58 @@ static int hdmi_dma_copy(struct snd_pcm_substream *substream, int channel,
+ 	struct hdmi_dma_priv *priv = runtime->private_data;
+ 	unsigned int count = frames_to_bytes(runtime, frames);
+ 	unsigned int pos_bytes = frames_to_bytes(runtime, pos);
+-	u32 *hw_buf;
+-	int subframe_idx;
+-	u32 pcm_data;
++	int channel_no, pcm_idx, subframe_idx, bits_left, sample_bits, map_sel;
++	u32 pcm_data[8], pcm_temp, *hw_buf, sample_block, inc_mask;
+ 
+ 	/* Adding frame info to pcm data from userspace and copy to hw_buffer */
+ 	hw_buf = (u32 *)(priv->hw_buffer.area + (pos_bytes * priv->buffer_ratio));
+ 
++	sample_bits = priv->sample_align * 8;
++	sample_block = priv->sample_align * priv->channels;
++
++	if (iec_header.B.non_pcm == 1) {
++		map_sel = priv->channels / 2;
++		inc_mask = 1 << (priv->channels - 1);
++	} else {
++		map_sel = 0;
++		inc_mask = 0xaa;
++	}
++
+ 	while (count > 0) {
+-		for (subframe_idx = 1 ; subframe_idx <= priv->channels ; subframe_idx++) {
+-			if (copy_from_user(&pcm_data, buf, priv->sample_align))
+-				return -EFAULT;
++		if (copy_from_user(pcm_data, buf, sample_block))
++			return -EFAULT;
+ 
+-			buf += priv->sample_align;
+-			count -= priv->sample_align;
++		buf += sample_block;
++		count -= sample_block;
+ 
+-			/* Save the header info to the audio dma buffer */
+-			*hw_buf++ = hdmi_dma_add_frame_info(priv, pcm_data, subframe_idx);
+-		}
++		channel_no = pcm_idx = 0;
++		do {
++			pcm_temp = pcm_data[pcm_idx++];
++			bits_left = 32;
++			for (;;) {
++				/* re-map channels */
++				subframe_idx = channel_maps_alsa_cea[map_sel][channel_no];
++
++				/* Save the header info to the audio dma buffer */
++				hw_buf[subframe_idx] = hdmi_dma_add_frame_info(
++								priv, pcm_temp, subframe_idx);
++
++				if (inc_mask & (1 << channel_no)) {
++					if (++priv->frame_idx == 192)
++						priv->frame_idx = 0;
++				}
++
++				channel_no++;
++
++				if (bits_left <= sample_bits)
++					break;
+ 
+-		priv->frame_idx++;
+-		if (priv->frame_idx == 192)
+-			priv->frame_idx = 0;
++				bits_left -= sample_bits;
++				pcm_temp >>= sample_bits;
++			}
++		} while (channel_no < priv->channels);
++
++		hw_buf += priv->channels;
+ 	}
+ 
+ 	return 0;
+@@ -777,6 +900,7 @@ static int hdmi_dma_hw_params(struct snd_pcm_substream *substream,
+ 	init_table(priv->channels);
+ 
+ 	priv->appl_bytes = 0;
++	priv->frame_idx = 0;
+ 
+ 	return 0;
+ }
+@@ -785,8 +909,27 @@ static void hdmi_dma_trigger_init(struct snd_pcm_substream *substream,
+ 				struct hdmi_dma_priv *priv)
+ {
+ 	unsigned long status;
++	bool hbr;
++
++	/*
++	 * Set HBR mode (>192kHz IEC-61937 HD audio bitstreaming).
++	 * This is done this late because userspace may alter the AESx
++	 * parameters until the stream is finally prepared.
++	 */
++	hbr = (iec_header.B.non_pcm == 0 && priv->channels == 8);
++	hdmi_audio_writeb(AHB_DMA_CONF0, HBR, !!hbr);
++
++	/*
++	 * Override AES3 - parameter: This is a temporary hack for
++	 * callers that provide incorrect information when opening
++	 * the device. 0x09 (i.e. 768K) is the only acceptable value.
++	 */
++	if (hbr) {
++		iec_header.B.sample_freq = 0x09;
++		iec_header.B.org_sample_freq = 0x00;
++	}
+ 
+-	priv->frame_idx = 0;
++	priv->offset = 0;
+ 
+ 	/* Copy data by buffer_bytes */
+ 	hdmi_dma_data_copy(substream, priv, 'b');
+@@ -831,13 +974,13 @@ static int hdmi_dma_trigger(struct snd_pcm_substream *substream, int cmd)
+ 	switch (cmd) {
+ 	case SNDRV_PCM_TRIGGER_START:
+ 	case SNDRV_PCM_TRIGGER_RESUME:
+-	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+ 		if (!check_hdmi_state())
+ 			return 0;
+ 		hdmi_dma_trigger_init(substream, priv);
+ 
+ 		dumpregs(dev);
+ 
++	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+ 		priv->tx_active = true;
+ 		hdmi_audio_writeb(AHB_DMA_START, START, 0x1);
+ 		hdmi_dma_irq_set(false);
+@@ -886,7 +1029,7 @@ static struct snd_pcm_hardware snd_imx_hardware = {
+ 	.period_bytes_min = HDMI_DMA_PERIOD_BYTES / 2,
+ 	.period_bytes_max = HDMI_DMA_PERIOD_BYTES / 2,
+ 	.periods_min = 8,
+-	.periods_max = 8,
++	.periods_max = HDMI_DMA_BUF_SIZE / HDMI_DMA_PERIOD_BYTES,
+ 	.fifo_size = 0,
+ };
+ 
+@@ -1063,6 +1206,16 @@ static int imx_soc_platform_probe(struct platform_device *pdev)
+ 
+ 	dev_set_drvdata(&pdev->dev, priv);
+ 
++	switch (hdmi_readb(HDMI_REVISION_ID)) {
++	case 0x0a:
++		snd_imx_hardware.period_bytes_max = HDMI_DMA_PERIOD_BYTES / 4;
++		snd_imx_hardware.period_bytes_min = HDMI_DMA_PERIOD_BYTES / 4;
++		snd_imx_hardware.periods_max = HDMI_DMA_BUF_SIZE / (HDMI_DMA_PERIOD_BYTES / 2);
++		break;
++	default:
++		break;
++	}
++
+ 	ret = snd_soc_register_platform(&pdev->dev, &imx_hdmi_platform);
+ 	if (ret)
+ 		goto err_plat;
+diff --git a/sound/soc/fsl/imx-hdmi.h b/sound/soc/fsl/imx-hdmi.h
+index 22b3dc5..d0f4ad1 100644
+--- a/sound/soc/fsl/imx-hdmi.h
++++ b/sound/soc/fsl/imx-hdmi.h
+@@ -50,7 +50,7 @@ union hdmi_audio_header_t {
+ 	uint64_t  U;
+ 	struct {
+ 		unsigned consumer:1;
+-		unsigned linear_pcm:1;
++		unsigned non_pcm:1;
+ 		unsigned copyright:1;
+ 		unsigned pre_emphasis:3;
+ 		unsigned mode:2;
+diff --git a/sound/soc/fsl/imx-sgtl5000.c b/sound/soc/fsl/imx-sgtl5000.c
+index 8d49165..95ea547 100644
+--- a/sound/soc/fsl/imx-sgtl5000.c
++++ b/sound/soc/fsl/imx-sgtl5000.c
+@@ -9,13 +9,15 @@
+  * http://www.opensource.org/licenses/gpl-license.html
+  * http://www.gnu.org/copyleft/gpl.html
+  */
++#define DEBUG
+ 
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_platform.h>
+-#include <linux/of_i2c.h>
++#include <linux/i2c.h>
+ #include <linux/clk.h>
+ #include <sound/soc.h>
++#include <linux/of_i2c.h>
+ 
+ #include "../codecs/sgtl5000.h"
+ #include "imx-audmux.h"
+@@ -33,8 +35,7 @@ struct imx_sgtl5000_data {
+ 
+ static int imx_sgtl5000_dai_init(struct snd_soc_pcm_runtime *rtd)
+ {
+-	struct imx_sgtl5000_data *data = container_of(rtd->card,
+-					struct imx_sgtl5000_data, card);
++	struct imx_sgtl5000_data *data = snd_soc_card_get_drvdata(rtd->card);
+ 	struct device *dev = rtd->card->dev;
+ 	int ret;
+ 
+@@ -62,7 +63,7 @@ static int imx_sgtl5000_probe(struct platform_device *pdev)
+ 	struct device_node *ssi_np, *codec_np;
+ 	struct platform_device *ssi_pdev;
+ 	struct i2c_client *codec_dev;
+-	struct imx_sgtl5000_data *data;
++	struct imx_sgtl5000_data *data = NULL;
+ 	int int_port, ext_port;
+ 	int ret;
+ 
+@@ -113,13 +114,13 @@ static int imx_sgtl5000_probe(struct platform_device *pdev)
+ 	ssi_pdev = of_find_device_by_node(ssi_np);
+ 	if (!ssi_pdev) {
+ 		dev_err(&pdev->dev, "failed to find SSI platform device\n");
+-		ret = -EINVAL;
++		ret = -EPROBE_DEFER;
+ 		goto fail;
+ 	}
+ 	codec_dev = of_find_i2c_device_by_node(codec_np);
+ 	if (!codec_dev) {
+ 		dev_err(&pdev->dev, "failed to find codec platform device\n");
+-		return -EINVAL;
++		return -EPROBE_DEFER;
+ 	}
+ 
+ 	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
+@@ -130,20 +131,12 @@ static int imx_sgtl5000_probe(struct platform_device *pdev)
+ 
+ 	data->codec_clk = clk_get(&codec_dev->dev, NULL);
+ 	if (IS_ERR(data->codec_clk)) {
+-		/* assuming clock enabled by default */
+-		data->codec_clk = NULL;
+-		ret = of_property_read_u32(codec_np, "clock-frequency",
+-					&data->clk_frequency);
+-		if (ret) {
+-			dev_err(&codec_dev->dev,
+-				"clock-frequency missing or invalid\n");
+-			goto fail;
+-		}
+-	} else {
+-		data->clk_frequency = clk_get_rate(data->codec_clk);
+-		clk_prepare_enable(data->codec_clk);
++		ret = PTR_ERR(data->codec_clk);
++		goto fail;
+ 	}
+ 
++	data->clk_frequency = clk_get_rate(data->codec_clk);
++
+ 	data->dai.name = "HiFi";
+ 	data->dai.stream_name = "HiFi";
+ 	data->dai.codec_dai_name = "sgtl5000";
+@@ -157,26 +150,33 @@ static int imx_sgtl5000_probe(struct platform_device *pdev)
+ 	data->card.dev = &pdev->dev;
+ 	ret = snd_soc_of_parse_card_name(&data->card, "model");
+ 	if (ret)
+-		goto clk_fail;
++		goto fail;
+ 	ret = snd_soc_of_parse_audio_routing(&data->card, "audio-routing");
+ 	if (ret)
+-		goto clk_fail;
++		goto fail;
+ 	data->card.num_links = 1;
+ 	data->card.owner = THIS_MODULE;
+ 	data->card.dai_link = &data->dai;
+ 	data->card.dapm_widgets = imx_sgtl5000_dapm_widgets;
+ 	data->card.num_dapm_widgets = ARRAY_SIZE(imx_sgtl5000_dapm_widgets);
+ 
+-	ret = snd_soc_register_card(&data->card);
++	platform_set_drvdata(pdev, &data->card);
++	snd_soc_card_set_drvdata(&data->card, data);
++
++	ret = devm_snd_soc_register_card(&pdev->dev, &data->card);
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
+-		goto clk_fail;
++		goto fail;
+ 	}
+ 
+-	platform_set_drvdata(pdev, data);
+-clk_fail:
+-	clk_put(data->codec_clk);
++	of_node_put(ssi_np);
++	of_node_put(codec_np);
++
++	return 0;
++
+ fail:
++	if (data && !IS_ERR(data->codec_clk))
++		clk_put(data->codec_clk);
+ 	if (ssi_np)
+ 		of_node_put(ssi_np);
+ 	if (codec_np)
+@@ -187,13 +187,10 @@ fail:
+ 
+ static int imx_sgtl5000_remove(struct platform_device *pdev)
+ {
+-	struct imx_sgtl5000_data *data = platform_get_drvdata(pdev);
++	struct snd_soc_card *card = platform_get_drvdata(pdev);
++	struct imx_sgtl5000_data *data = snd_soc_card_get_drvdata(card);
+ 
+-	if (data->codec_clk) {
+-		clk_disable_unprepare(data->codec_clk);
+-		clk_put(data->codec_clk);
+-	}
+-	snd_soc_unregister_card(&data->card);
++	clk_put(data->codec_clk);
+ 
+ 	return 0;
+ }
+@@ -208,6 +205,7 @@ static struct platform_driver imx_sgtl5000_driver = {
+ 	.driver = {
+ 		.name = "imx-sgtl5000",
+ 		.owner = THIS_MODULE,
++		.pm = &snd_soc_pm_ops,
+ 		.of_match_table = imx_sgtl5000_dt_ids,
+ 	},
+ 	.probe = imx_sgtl5000_probe,
+diff --git a/sound/soc/fsl/imx-spdif.c b/sound/soc/fsl/imx-spdif.c
+index c005b0e..b8d5730 100644
+--- a/sound/soc/fsl/imx-spdif.c
++++ b/sound/soc/fsl/imx-spdif.c
+@@ -14,17 +14,15 @@
+ #include <sound/soc.h>
+ 
+ struct imx_spdif_data {
+-	struct snd_soc_dai_link dai[2];
++	struct snd_soc_dai_link dai;
+ 	struct snd_soc_card card;
+-	struct platform_device *txdev;
+-	struct platform_device *rxdev;
+ };
+ 
+ static int imx_spdif_audio_probe(struct platform_device *pdev)
+ {
+ 	struct device_node *spdif_np, *np = pdev->dev.of_node;
+ 	struct imx_spdif_data *data;
+-	int ret = 0, num_links = 0;
++	int ret = 0;
+ 
+ 	spdif_np = of_parse_phandle(np, "spdif-controller", 0);
+ 	if (!spdif_np) {
+@@ -35,75 +33,48 @@ static int imx_spdif_audio_probe(struct platform_device *pdev)
+ 
+ 	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
+ 	if (!data) {
+-		dev_err(&pdev->dev, "failed to allocate memory\n");
+ 		ret = -ENOMEM;
+ 		goto end;
+ 	}
+ 
+-	if (of_property_read_bool(np, "spdif-out")) {
+-		data->dai[num_links].name = "S/PDIF TX";
+-		data->dai[num_links].stream_name = "S/PDIF PCM Playback";
+-		data->dai[num_links].codec_dai_name = "dit-hifi";
+-		data->dai[num_links].codec_name = "spdif-dit";
+-		data->dai[num_links].cpu_of_node = spdif_np;
+-		data->dai[num_links].platform_of_node = spdif_np;
+-		num_links++;
+-
+-		data->txdev = platform_device_register_simple("spdif-dit", -1, NULL, 0);
+-		if (IS_ERR(data->txdev)) {
+-			ret = PTR_ERR(data->txdev);
+-			dev_err(&pdev->dev, "register dit failed: %d\n", ret);
+-			goto end;
+-		}
+-	}
++	data->dai.name = "S/PDIF PCM";
++	data->dai.stream_name = "S/PDIF PCM";
++	data->dai.codec_dai_name = "snd-soc-dummy-dai";
++	data->dai.codec_name = "snd-soc-dummy";
++	data->dai.cpu_of_node = spdif_np;
++	data->dai.platform_of_node = spdif_np;
++//	data->dai.playback_only = true;
++//	data->dai.capture_only = true;
+ 
+-	if (of_property_read_bool(np, "spdif-in")) {
+-		data->dai[num_links].name = "S/PDIF RX";
+-		data->dai[num_links].stream_name = "S/PDIF PCM Capture";
+-		data->dai[num_links].codec_dai_name = "dir-hifi";
+-		data->dai[num_links].codec_name = "spdif-dir";
+-		data->dai[num_links].cpu_of_node = spdif_np;
+-		data->dai[num_links].platform_of_node = spdif_np;
+-		num_links++;
+-
+-		data->rxdev = platform_device_register_simple("spdif-dir", -1, NULL, 0);
+-		if (IS_ERR(data->rxdev)) {
+-			ret = PTR_ERR(data->rxdev);
+-			dev_err(&pdev->dev, "register dir failed: %d\n", ret);
+-			goto error_dit;
+-		}
+-	}
++/*	if (of_property_read_bool(np, "spdif-out"))
++		data->dai.capture_only = false;
+ 
+-	if (!num_links) {
++	if (of_property_read_bool(np, "spdif-in"))
++		data->dai.playback_only = false;
++
++	if (data->dai.playback_only && data->dai.capture_only) {
+ 		dev_err(&pdev->dev, "no enabled S/PDIF DAI link\n");
+-		goto error_dir;
++		goto end;
+ 	}
+-
++*/
+ 	data->card.dev = &pdev->dev;
+-	data->card.num_links = num_links;
+-	data->card.dai_link = data->dai;
++	data->card.dai_link = &data->dai;
++	data->card.num_links = 1;
+ 
+ 	ret = snd_soc_of_parse_card_name(&data->card, "model");
+ 	if (ret)
+-		goto error_dir;
++		goto end;
+ 
+ 	platform_set_drvdata(pdev, &data->card);
+ 	snd_soc_card_set_drvdata(&data->card, data);
+ 
+-	ret = snd_soc_register_card(&data->card);
++//	ret = devm_snd_soc_register_card(&pdev->dev, &data->card);
++        ret = snd_soc_register_card(&data->card);
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "snd_soc_register_card failed: %d\n", ret);
+-		goto error_dir;
++		goto end;
+ 	}
+ 
+-	goto end;
+-
+-error_dir:
+-	if (data->rxdev)
+-		platform_device_unregister(data->rxdev);
+-error_dit:
+-	if (data->txdev)
+-		platform_device_unregister(data->txdev);
+ end:
+ 	if (spdif_np)
+ 		of_node_put(spdif_np);
+@@ -111,21 +82,6 @@ end:
+ 	return ret;
+ }
+ 
+-static int imx_spdif_audio_remove(struct platform_device *pdev)
+-{
+-	struct snd_soc_card *card = platform_get_drvdata(pdev);
+-	struct imx_spdif_data *data = snd_soc_card_get_drvdata(card);
+-
+-	snd_soc_unregister_card(card);
+-
+-	if (data->rxdev)
+-		platform_device_unregister(data->rxdev);
+-	if (data->txdev)
+-		platform_device_unregister(data->txdev);
+-
+-	return 0;
+-}
+-
+ static const struct of_device_id imx_spdif_dt_ids[] = {
+ 	{ .compatible = "fsl,imx-audio-spdif", },
+ 	{ /* sentinel */ }
+@@ -140,7 +96,6 @@ static struct platform_driver imx_spdif_driver = {
+ 		.of_match_table = imx_spdif_dt_ids,
+ 	},
+ 	.probe = imx_spdif_audio_probe,
+-	.remove = imx_spdif_audio_remove,
+ };
+ 
+ module_platform_driver(imx_spdif_driver);
+diff --git a/sound/usb/Kconfig b/sound/usb/Kconfig
+index 225dfd7..ba26642 100644
+--- a/sound/usb/Kconfig
++++ b/sound/usb/Kconfig
+@@ -14,6 +14,7 @@ config SND_USB_AUDIO
+ 	select SND_HWDEP
+ 	select SND_RAWMIDI
+ 	select SND_PCM
++	select BITREVERSE
+ 	help
+ 	  Say Y here to include support for USB audio and USB MIDI
+ 	  devices.
+diff --git a/sound/usb/card.c b/sound/usb/card.c
+index 64952e2..04b24ac 100644
+--- a/sound/usb/card.c
++++ b/sound/usb/card.c
+@@ -649,7 +649,7 @@ int snd_usb_autoresume(struct snd_usb_audio *chip)
+ 	int err = -ENODEV;
+ 
+ 	down_read(&chip->shutdown_rwsem);
+-	if (chip->probing)
++	if (chip->probing && chip->in_pm)
+ 		err = 0;
+ 	else if (!chip->shutdown)
+ 		err = usb_autopm_get_interface(chip->pm_intf);
+@@ -661,7 +661,7 @@ int snd_usb_autoresume(struct snd_usb_audio *chip)
+ void snd_usb_autosuspend(struct snd_usb_audio *chip)
+ {
+ 	down_read(&chip->shutdown_rwsem);
+-	if (!chip->shutdown && !chip->probing)
++	if (!chip->shutdown && !chip->probing && !chip->in_pm)
+ 		usb_autopm_put_interface(chip->pm_intf);
+ 	up_read(&chip->shutdown_rwsem);
+ }
+@@ -709,6 +709,8 @@ static int usb_audio_resume(struct usb_interface *intf)
+ 		return 0;
+ 	if (--chip->num_suspended_intf)
+ 		return 0;
++
++	chip->in_pm = 1;
+ 	/*
+ 	 * ALSA leaves material resumption to user space
+ 	 * we just notify and restart the mixers
+@@ -724,6 +726,7 @@ static int usb_audio_resume(struct usb_interface *intf)
+ 	chip->autosuspended = 0;
+ 
+ err_out:
++	chip->in_pm = 0;
+ 	return err;
+ }
+ #else
+diff --git a/sound/usb/card.h b/sound/usb/card.h
+index bf2889a..82c2d80 100644
+--- a/sound/usb/card.h
++++ b/sound/usb/card.h
+@@ -90,6 +90,7 @@ struct snd_usb_endpoint {
+ 	unsigned int curframesize;      /* current packet size in frames (for capture) */
+ 	unsigned int syncmaxsize;	/* sync endpoint packet size */
+ 	unsigned int fill_max:1;	/* fill max packet size always */
++	unsigned int udh01_fb_quirk:1;	/* corrupted feedback data */
+ 	unsigned int datainterval;      /* log_2 of data packet interval */
+ 	unsigned int syncinterval;	/* P for adaptive mode, 0 otherwise */
+ 	unsigned char silence_value;
+diff --git a/sound/usb/endpoint.c b/sound/usb/endpoint.c
+index 659950e..308c02b 100644
+--- a/sound/usb/endpoint.c
++++ b/sound/usb/endpoint.c
+@@ -467,6 +467,10 @@ struct snd_usb_endpoint *snd_usb_add_endpoint(struct snd_usb_audio *chip,
+ 			ep->syncinterval = 3;
+ 
+ 		ep->syncmaxsize = le16_to_cpu(get_endpoint(alts, 1)->wMaxPacketSize);
++
++		if (chip->usb_id == USB_ID(0x0644, 0x8038) /* TEAC UD-H01 */ &&
++		    ep->syncmaxsize == 4)
++			ep->udh01_fb_quirk = 1;
+ 	}
+ 
+ 	list_add_tail(&ep->list, &chip->ep_list);
+@@ -1075,7 +1079,16 @@ void snd_usb_handle_sync_urb(struct snd_usb_endpoint *ep,
+ 	if (f == 0)
+ 		return;
+ 
+-	if (unlikely(ep->freqshift == INT_MIN)) {
++	if (unlikely(sender->udh01_fb_quirk)) {
++		/*
++		 * The TEAC UD-H01 firmware sometimes changes the feedback value
++		 * by +/- 0x1.0000.
++		 */
++		if (f < ep->freqn - 0x8000)
++			f += 0x10000;
++		else if (f > ep->freqn + 0x8000)
++			f -= 0x10000;
++	} else if (unlikely(ep->freqshift == INT_MIN)) {
+ 		/*
+ 		 * The first time we see a feedback value, determine its format
+ 		 * by shifting it left or right until it matches the nominal
+diff --git a/sound/usb/mixer.c b/sound/usb/mixer.c
+index 95558ef..be4db47 100644
+--- a/sound/usb/mixer.c
++++ b/sound/usb/mixer.c
+@@ -883,6 +883,7 @@ static void volume_control_quirks(struct usb_mixer_elem_info *cval,
+ 		}
+ 		break;
+ 
++	case USB_ID(0x046d, 0x0807): /* Logitech Webcam C500 */
+ 	case USB_ID(0x046d, 0x0808):
+ 	case USB_ID(0x046d, 0x0809):
+ 	case USB_ID(0x046d, 0x081b): /* HD Webcam c310 */
+diff --git a/sound/usb/mixer_maps.c b/sound/usb/mixer_maps.c
+index cc2dd1f..0339d46 100644
+--- a/sound/usb/mixer_maps.c
++++ b/sound/usb/mixer_maps.c
+@@ -322,6 +322,11 @@ static struct usbmix_name_map hercules_usb51_map[] = {
+ 	{ 0 }				/* terminator */
+ };
+ 
++static const struct usbmix_name_map kef_x300a_map[] = {
++	{ 10, NULL }, /* firmware locks up (?) when we try to access this FU */
++	{ 0 }
++};
++
+ /*
+  * Control map entries
+  */
+@@ -409,6 +414,10 @@ static struct usbmix_ctl_map usbmix_ctl_maps[] = {
+ 		.id = USB_ID(0x200c, 0x1018),
+ 		.map = ebox44_map,
+ 	},
++	{
++		.id = USB_ID(0x27ac, 0x1000),
++		.map = kef_x300a_map,
++	},
+ 	{ 0 } /* terminator */
+ };
+ 
+diff --git a/sound/usb/pcm.c b/sound/usb/pcm.c
+index 93b6e32..0d7a872 100644
+--- a/sound/usb/pcm.c
++++ b/sound/usb/pcm.c
+@@ -1420,7 +1420,8 @@ static void retire_playback_urb(struct snd_usb_substream *subs,
+ 	 * on two reads of a counter updated every ms.
+ 	 */
+ 	if (abs(est_delay - subs->last_delay) * 1000 > runtime->rate * 2)
+-		snd_printk(KERN_DEBUG "delay: estimated %d, actual %d\n",
++		dev_dbg_ratelimited(&subs->dev->dev,
++			"delay: estimated %d, actual %d\n",
+ 			est_delay, subs->last_delay);
+ 
+ 	if (!subs->running) {
+diff --git a/sound/usb/usbaudio.h b/sound/usb/usbaudio.h
+index bc43bca..f13bd00 100644
+--- a/sound/usb/usbaudio.h
++++ b/sound/usb/usbaudio.h
+@@ -40,6 +40,7 @@ struct snd_usb_audio {
+ 	struct rw_semaphore shutdown_rwsem;
+ 	unsigned int shutdown:1;
+ 	unsigned int probing:1;
++	unsigned int in_pm:1;
+ 	unsigned int autosuspended:1;	
+ 	unsigned int txfr_quirk:1; /* Subframe boundaries on transfers */
+ 	

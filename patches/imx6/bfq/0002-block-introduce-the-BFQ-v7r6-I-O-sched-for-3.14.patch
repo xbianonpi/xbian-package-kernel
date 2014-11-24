@@ -1,11 +1,11 @@
-From 24b6ceb8b94368480e272228c1b58af80074ed56 Mon Sep 17 00:00:00 2001
+From 3afccf7a37cec1f4ae5fd0ef00356832955ee04e Mon Sep 17 00:00:00 2001
 From: Paolo Valente <paolo.valente@unimore.it>
 Date: Thu, 9 May 2013 19:10:02 +0200
-Subject: [PATCH 2/3] block: introduce the BFQ-v7r5 I/O sched for 3.10
+Subject: [PATCH 2/3] block: introduce the BFQ-v7r6 I/O sched for 3.14
 
-Add the BFQ-v7r5 I/O scheduler to 3.10.
+Add the BFQ-v7r6 I/O scheduler to 3.14.
 The general structure is borrowed from CFQ, as much of the code for
-handling I/O contexts Over time, several useful features have been
+handling I/O contexts. Over time, several useful features have been
 ported from CFQ as well (details in the changelog in README.BFQ). A
 (bfq_)queue is associated to each task doing I/O on a device, and each
 time a scheduling decision has to be made a queue is selected and served
@@ -56,12 +56,12 @@ until it expires.
 Signed-off-by: Paolo Valente <paolo.valente@unimore.it>
 Signed-off-by: Arianna Avanzini <avanzini.arianna@gmail.com>
 ---
- block/bfq-cgroup.c  |  907 +++++++++++++
+ block/bfq-cgroup.c  |  932 ++++++++++++
  block/bfq-ioc.c     |   36 +
- block/bfq-iosched.c | 3605 +++++++++++++++++++++++++++++++++++++++++++++++++++
- block/bfq-sched.c   | 1207 +++++++++++++++++
- block/bfq.h         |  740 +++++++++++
- 5 files changed, 6495 insertions(+)
+ block/bfq-iosched.c | 3887 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ block/bfq-sched.c   | 1207 ++++++++++++++++
+ block/bfq.h         |  773 ++++++++++
+ 5 files changed, 6835 insertions(+)
  create mode 100644 block/bfq-cgroup.c
  create mode 100644 block/bfq-ioc.c
  create mode 100644 block/bfq-iosched.c
@@ -70,10 +70,10 @@ Signed-off-by: Arianna Avanzini <avanzini.arianna@gmail.com>
 
 diff --git a/block/bfq-cgroup.c b/block/bfq-cgroup.c
 new file mode 100644
-index 0000000..43bfb35
+index 0000000..2aacc94
 --- /dev/null
 +++ b/block/bfq-cgroup.c
-@@ -0,0 +1,907 @@
+@@ -0,0 +1,932 @@
 +/*
 + * BFQ: CGROUPS support.
 + *
@@ -93,9 +93,9 @@ index 0000000..43bfb35
 +
 +static DEFINE_MUTEX(bfqio_mutex);
 +
-+static bool bfqio_is_removed(struct cgroup *cgroup)
++static bool bfqio_is_removed(struct bfqio_cgroup *bgrp)
 +{
-+	return test_bit(CGRP_REMOVED, &cgroup->flags);
++	return bgrp ? !bgrp->online : false;
 +}
 +
 +static struct bfqio_cgroup bfqio_root_cgroup = {
@@ -115,10 +115,9 @@ index 0000000..43bfb35
 +	entity->sched_data = &bfqg->sched_data;
 +}
 +
-+static struct bfqio_cgroup *cgroup_to_bfqio(struct cgroup *cgroup)
++static struct bfqio_cgroup *css_to_bfqio(struct cgroup_subsys_state *css)
 +{
-+	return container_of(cgroup_subsys_state(cgroup, bfqio_subsys_id),
-+			    struct bfqio_cgroup, css);
++	return css ? container_of(css, struct bfqio_cgroup, css) : NULL;
 +}
 +
 +/*
@@ -181,20 +180,20 @@ index 0000000..43bfb35
 +/**
 + * bfq_group_chain_alloc - allocate a chain of groups.
 + * @bfqd: queue descriptor.
-+ * @cgroup: the leaf cgroup this chain starts from.
++ * @css: the leaf cgroup_subsys_state this chain starts from.
 + *
 + * Allocate a chain of groups starting from the one belonging to
 + * @cgroup up to the root cgroup.  Stop if a cgroup on the chain
 + * to the root has already an allocated group on @bfqd.
 + */
 +static struct bfq_group *bfq_group_chain_alloc(struct bfq_data *bfqd,
-+					       struct cgroup *cgroup)
++					       struct cgroup_subsys_state *css)
 +{
 +	struct bfqio_cgroup *bgrp;
 +	struct bfq_group *bfqg, *prev = NULL, *leaf = NULL;
 +
-+	for (; cgroup != NULL; cgroup = cgroup->parent) {
-+		bgrp = cgroup_to_bfqio(cgroup);
++	for (; css != NULL; css = css->parent) {
++		bgrp = css_to_bfqio(css);
 +
 +		bfqg = bfqio_lookup_group(bgrp, bfqd);
 +		if (bfqg != NULL) {
@@ -245,7 +244,7 @@ index 0000000..43bfb35
 + * bfq_group_chain_link - link an allocated group chain to a cgroup
 + *                        hierarchy.
 + * @bfqd: the queue descriptor.
-+ * @cgroup: the leaf cgroup to start from.
++ * @css: the leaf cgroup_subsys_state to start from.
 + * @leaf: the leaf group (to be associated to @cgroup).
 + *
 + * Try to link a chain of groups to a cgroup hierarchy, connecting the
@@ -257,7 +256,8 @@ index 0000000..43bfb35
 + * per device) while the bfqio_cgroup lock protects the list of groups
 + * belonging to the same cgroup.
 + */
-+static void bfq_group_chain_link(struct bfq_data *bfqd, struct cgroup *cgroup,
++static void bfq_group_chain_link(struct bfq_data *bfqd,
++				 struct cgroup_subsys_state *css,
 +				 struct bfq_group *leaf)
 +{
 +	struct bfqio_cgroup *bgrp;
@@ -266,8 +266,8 @@ index 0000000..43bfb35
 +
 +	assert_spin_locked(bfqd->queue->queue_lock);
 +
-+	for (; cgroup != NULL && leaf != NULL; cgroup = cgroup->parent) {
-+		bgrp = cgroup_to_bfqio(cgroup);
++	for (; css != NULL && leaf != NULL; css = css->parent) {
++		bgrp = css_to_bfqio(css);
 +		next = leaf->bfqd;
 +
 +		bfqg = bfqio_lookup_group(bgrp, bfqd);
@@ -285,9 +285,9 @@ index 0000000..43bfb35
 +		leaf = next;
 +	}
 +
-+	BUG_ON(cgroup == NULL && leaf != NULL);
-+	if (cgroup != NULL && prev != NULL) {
-+		bgrp = cgroup_to_bfqio(cgroup);
++	BUG_ON(css == NULL && leaf != NULL);
++	if (css != NULL && prev != NULL) {
++		bgrp = css_to_bfqio(css);
 +		bfqg = bfqio_lookup_group(bgrp, bfqd);
 +		bfq_group_set_parent(prev, bfqg);
 +	}
@@ -313,18 +313,18 @@ index 0000000..43bfb35
 + * have been successful.
 + */
 +static struct bfq_group *bfq_find_alloc_group(struct bfq_data *bfqd,
-+					      struct cgroup *cgroup)
++					      struct cgroup_subsys_state *css)
 +{
-+	struct bfqio_cgroup *bgrp = cgroup_to_bfqio(cgroup);
++	struct bfqio_cgroup *bgrp = css_to_bfqio(css);
 +	struct bfq_group *bfqg;
 +
 +	bfqg = bfqio_lookup_group(bgrp, bfqd);
 +	if (bfqg != NULL)
 +		return bfqg;
 +
-+	bfqg = bfq_group_chain_alloc(bfqd, cgroup);
++	bfqg = bfq_group_chain_alloc(bfqd, css);
 +	if (bfqg != NULL)
-+		bfq_group_chain_link(bfqd, cgroup, bfqg);
++		bfq_group_chain_link(bfqd, css, bfqg);
 +	else
 +		bfqg = bfqd->root_group;
 +
@@ -396,8 +396,8 @@ index 0000000..43bfb35
 + * time here, at the price of slightly more complex code.
 + */
 +static struct bfq_group *__bfq_bic_change_cgroup(struct bfq_data *bfqd,
-+						 struct bfq_io_cq *bic,
-+						 struct cgroup *cgroup)
++						struct bfq_io_cq *bic,
++						struct cgroup_subsys_state *css)
 +{
 +	struct bfq_queue *async_bfqq = bic_to_bfqq(bic, 0);
 +	struct bfq_queue *sync_bfqq = bic_to_bfqq(bic, 1);
@@ -405,9 +405,9 @@ index 0000000..43bfb35
 +	struct bfq_group *bfqg;
 +	struct bfqio_cgroup *bgrp;
 +
-+	bgrp = cgroup_to_bfqio(cgroup);
++	bgrp = css_to_bfqio(css);
 +
-+	bfqg = bfq_find_alloc_group(bfqd, cgroup);
++	bfqg = bfq_find_alloc_group(bfqd, css);
 +	if (async_bfqq != NULL) {
 +		entity = &async_bfqq->entity;
 +
@@ -438,7 +438,7 @@ index 0000000..43bfb35
 + * moved into its new parent group.
 + */
 +static void bfq_bic_change_cgroup(struct bfq_io_cq *bic,
-+				  struct cgroup *cgroup)
++				  struct cgroup_subsys_state *css)
 +{
 +	struct bfq_data *bfqd;
 +	unsigned long uninitialized_var(flags);
@@ -446,7 +446,7 @@ index 0000000..43bfb35
 +	bfqd = bfq_get_bfqd_locked(&(bic->icq.q->elevator->elevator_data),
 +				   &flags);
 +	if (bfqd != NULL) {
-+		__bfq_bic_change_cgroup(bfqd, bic, cgroup);
++		__bfq_bic_change_cgroup(bfqd, bic, css);
 +		bfq_put_bfqd_unlock(bfqd, &flags);
 +	}
 +}
@@ -476,13 +476,13 @@ index 0000000..43bfb35
 +{
 +	struct bfq_data *bfqd = bic_to_bfqd(bic);
 +	struct bfq_group *bfqg;
-+	struct cgroup *cgroup;
++	struct cgroup_subsys_state *css;
 +
 +	BUG_ON(bfqd == NULL);
 +
 +	rcu_read_lock();
-+	cgroup = task_cgroup(current, bfqio_subsys_id);
-+	bfqg = __bfq_bic_change_cgroup(bfqd, bic, cgroup);
++	css = task_css(current, bfqio_subsys_id);
++	bfqg = __bfq_bic_change_cgroup(bfqd, bic, css);
 +	rcu_read_unlock();
 +
 +	return bfqg;
@@ -707,17 +707,16 @@ index 0000000..43bfb35
 +}
 +
 +#define SHOW_FUNCTION(__VAR)						\
-+static u64 bfqio_cgroup_##__VAR##_read(struct cgroup *cgroup,		\
++static u64 bfqio_cgroup_##__VAR##_read(struct cgroup_subsys_state *css, \
 +				       struct cftype *cftype)		\
 +{									\
-+	struct bfqio_cgroup *bgrp;					\
++	struct bfqio_cgroup *bgrp = css_to_bfqio(css);			\
 +	u64 ret = -ENODEV;						\
 +									\
 +	mutex_lock(&bfqio_mutex);					\
-+	if (bfqio_is_removed(cgroup))					\
++	if (bfqio_is_removed(bgrp))					\
 +		goto out_unlock;					\
 +									\
-+	bgrp = cgroup_to_bfqio(cgroup);					\
 +	spin_lock_irq(&bgrp->lock);					\
 +	ret = bgrp->__VAR;						\
 +	spin_unlock_irq(&bgrp->lock);					\
@@ -733,11 +732,11 @@ index 0000000..43bfb35
 +#undef SHOW_FUNCTION
 +
 +#define STORE_FUNCTION(__VAR, __MIN, __MAX)				\
-+static int bfqio_cgroup_##__VAR##_write(struct cgroup *cgroup,		\
++static int bfqio_cgroup_##__VAR##_write(struct cgroup_subsys_state *css,\
 +					struct cftype *cftype,		\
 +					u64 val)			\
 +{									\
-+	struct bfqio_cgroup *bgrp;					\
++	struct bfqio_cgroup *bgrp = css_to_bfqio(css);			\
 +	struct bfq_group *bfqg;						\
 +	int ret = -EINVAL;						\
 +									\
@@ -746,11 +745,9 @@ index 0000000..43bfb35
 +									\
 +	ret = -ENODEV;							\
 +	mutex_lock(&bfqio_mutex);					\
-+	if (bfqio_is_removed(cgroup))					\
++	if (bfqio_is_removed(bgrp))					\
 +		goto out_unlock;					\
 +	ret = 0;							\
-+									\
-+	bgrp = cgroup_to_bfqio(cgroup);					\
 +									\
 +	spin_lock_irq(&bgrp->lock);					\
 +	bgrp->__VAR = (unsigned short)val;				\
@@ -813,11 +810,12 @@ index 0000000..43bfb35
 +	{ },	/* terminate */
 +};
 +
-+static struct cgroup_subsys_state *bfqio_create(struct cgroup *cgroup)
++static struct cgroup_subsys_state *bfqio_create(struct cgroup_subsys_state
++						*parent_css)
 +{
 +	struct bfqio_cgroup *bgrp;
 +
-+	if (cgroup->parent != NULL) {
++	if (parent_css != NULL) {
 +		bgrp = kzalloc(sizeof(*bgrp), GFP_KERNEL);
 +		if (bgrp == NULL)
 +			return ERR_PTR(-ENOMEM);
@@ -840,14 +838,18 @@ index 0000000..43bfb35
 + * behavior is that a group containing a task that forked using CLONE_IO
 + * will not be destroyed until the tasks sharing the ioc die.
 + */
-+static int bfqio_can_attach(struct cgroup *cgroup, struct cgroup_taskset *tset)
++static int bfqio_can_attach(struct cgroup_subsys_state *css,
++			    struct cgroup_taskset *tset)
 +{
 +	struct task_struct *task;
 +	struct io_context *ioc;
 +	int ret = 0;
 +
-+	cgroup_taskset_for_each(task, cgroup, tset) {
-+		/* task_lock() is needed to avoid races with exit_io_context() */
++	cgroup_taskset_for_each(task, css, tset) {
++		/*
++		 * task_lock() is needed to avoid races with
++		 * exit_io_context()
++		 */
 +		task_lock(task);
 +		ioc = task->io_context;
 +		if (ioc != NULL && atomic_read(&ioc->nr_tasks) > 1)
@@ -867,7 +869,8 @@ index 0000000..43bfb35
 +	return ret;
 +}
 +
-+static void bfqio_attach(struct cgroup *cgroup, struct cgroup_taskset *tset)
++static void bfqio_attach(struct cgroup_subsys_state *css,
++			 struct cgroup_taskset *tset)
 +{
 +	struct task_struct *task;
 +	struct io_context *ioc;
@@ -877,7 +880,7 @@ index 0000000..43bfb35
 +	 * IMPORTANT NOTE: The move of more than one process at a time to a
 +	 * new group has not yet been tested.
 +	 */
-+	cgroup_taskset_for_each(task, cgroup, tset) {
++	cgroup_taskset_for_each(task, css, tset) {
 +		ioc = get_task_io_context(task, GFP_ATOMIC, NUMA_NO_NODE);
 +		if (ioc) {
 +			/*
@@ -889,16 +892,16 @@ index 0000000..43bfb35
 +					icq->q->elevator->type->elevator_name,
 +					"bfq", ELV_NAME_MAX))
 +					bfq_bic_change_cgroup(icq_to_bic(icq),
-+							      cgroup);
++							      css);
 +			rcu_read_unlock();
 +			put_io_context(ioc);
 +		}
 +	}
 +}
 +
-+static void bfqio_destroy(struct cgroup *cgroup)
++static void bfqio_destroy(struct cgroup_subsys_state *css)
 +{
-+	struct bfqio_cgroup *bgrp = cgroup_to_bfqio(cgroup);
++	struct bfqio_cgroup *bgrp = css_to_bfqio(css);
 +	struct hlist_node *tmp;
 +	struct bfq_group *bfqg;
 +
@@ -917,9 +920,31 @@ index 0000000..43bfb35
 +	kfree(bgrp);
 +}
 +
++static int bfqio_css_online(struct cgroup_subsys_state *css)
++{
++	struct bfqio_cgroup *bgrp = css_to_bfqio(css);
++
++	mutex_lock(&bfqio_mutex);
++	bgrp->online = true;
++	mutex_unlock(&bfqio_mutex);
++
++	return 0;
++}
++
++static void bfqio_css_offline(struct cgroup_subsys_state *css)
++{
++	struct bfqio_cgroup *bgrp = css_to_bfqio(css);
++
++	mutex_lock(&bfqio_mutex);
++	bgrp->online = false;
++	mutex_unlock(&bfqio_mutex);
++}
++
 +struct cgroup_subsys bfqio_subsys = {
 +	.name = "bfqio",
 +	.css_alloc = bfqio_create,
++	.css_online = bfqio_css_online,
++	.css_offline = bfqio_css_offline,
 +	.can_attach = bfqio_can_attach,
 +	.attach = bfqio_attach,
 +	.css_free = bfqio_destroy,
@@ -1025,10 +1050,10 @@ index 0000000..7f6b000
 +}
 diff --git a/block/bfq-iosched.c b/block/bfq-iosched.c
 new file mode 100644
-index 0000000..1820333
+index 0000000..c0cc7fd
 --- /dev/null
 +++ b/block/bfq-iosched.c
-@@ -0,0 +1,3605 @@
+@@ -0,0 +1,3887 @@
 +/*
 + * Budget Fair Queueing (BFQ) disk scheduler.
 + *
@@ -1602,6 +1627,220 @@ index 0000000..1820333
 +	return dur;
 +}
 +
++/* Empty burst list and add just bfqq (see comments to bfq_handle_burst) */
++static inline void bfq_reset_burst_list(struct bfq_data *bfqd,
++					struct bfq_queue *bfqq)
++{
++	struct bfq_queue *item;
++	struct hlist_node *n;
++
++	hlist_for_each_entry_safe(item, n, &bfqd->burst_list, burst_list_node)
++		hlist_del_init(&item->burst_list_node);
++	hlist_add_head(&bfqq->burst_list_node, &bfqd->burst_list);
++	bfqd->burst_size = 1;
++}
++
++/* Add bfqq to the list of queues in current burst (see bfq_handle_burst) */
++static void bfq_add_to_burst(struct bfq_data *bfqd, struct bfq_queue *bfqq)
++{
++	/* Increment burst size to take into account also bfqq */
++	bfqd->burst_size++;
++
++	if (bfqd->burst_size == bfqd->bfq_large_burst_thresh) {
++		struct bfq_queue *pos, *bfqq_item;
++		struct hlist_node *n;
++
++		/*
++		 * Enough queues have been activated shortly after each
++		 * other to consider this burst as large.
++		 */
++		bfqd->large_burst = true;
++
++		/*
++		 * We can now mark all queues in the burst list as
++		 * belonging to a large burst.
++		 */
++		hlist_for_each_entry(bfqq_item, &bfqd->burst_list,
++				     burst_list_node)
++		        bfq_mark_bfqq_in_large_burst(bfqq_item);
++		bfq_mark_bfqq_in_large_burst(bfqq);
++
++		/*
++		 * From now on, and until the current burst finishes, any
++		 * new queue being activated shortly after the last queue
++		 * was inserted in the burst can be immediately marked as
++		 * belonging to a large burst. So the burst list is not
++		 * needed any more. Remove it.
++		 */
++		hlist_for_each_entry_safe(pos, n, &bfqd->burst_list,
++					  burst_list_node)
++			hlist_del_init(&pos->burst_list_node);
++	} else /* burst not yet large: add bfqq to the burst list */
++		hlist_add_head(&bfqq->burst_list_node, &bfqd->burst_list);
++}
++
++/*
++ * If many queues happen to become active shortly after each other, then,
++ * to help the processes associated to these queues get their job done as
++ * soon as possible, it is usually better to not grant either weight-raising
++ * or device idling to these queues. In this comment we describe, firstly,
++ * the reasons why this fact holds, and, secondly, the next function, which
++ * implements the main steps needed to properly mark these queues so that
++ * they can then be treated in a different way.
++ *
++ * As for the terminology, we say that a queue becomes active, i.e.,
++ * switches from idle to backlogged, either when it is created (as a
++ * consequence of the arrival of an I/O request), or, if already existing,
++ * when a new request for the queue arrives while the queue is idle.
++ * Bursts of activations, i.e., activations of different queues occurring
++ * shortly after each other, are typically caused by services or applications
++ * that spawn or reactivate many parallel threads/processes. Examples are
++ * systemd during boot or git grep.
++ *
++ * These services or applications benefit mostly from a high throughput:
++ * the quicker the requests of the activated queues are cumulatively served,
++ * the sooner the target job of these queues gets completed. As a consequence,
++ * weight-raising any of these queues, which also implies idling the device
++ * for it, is almost always counterproductive: in most cases it just lowers
++ * throughput.
++ *
++ * On the other hand, a burst of activations may be also caused by the start
++ * of an application that does not consist in a lot of parallel I/O-bound
++ * threads. In fact, with a complex application, the burst may be just a
++ * consequence of the fact that several processes need to be executed to
++ * start-up the application. To start an application as quickly as possible,
++ * the best thing to do is to privilege the I/O related to the application
++ * with respect to all other I/O. Therefore, the best strategy to start as
++ * quickly as possible an application that causes a burst of activations is
++ * to weight-raise all the queues activated during the burst. This is the
++ * exact opposite of the best strategy for the other type of bursts.
++ *
++ * In the end, to take the best action for each of the two cases, the two
++ * types of bursts need to be distinguished. Fortunately, this seems
++ * relatively easy to do, by looking at the sizes of the bursts. In
++ * particular, we found a threshold such that bursts with a larger size
++ * than that threshold are apparently caused only by services or commands
++ * such as systemd or git grep. For brevity, hereafter we call just 'large'
++ * these bursts. BFQ *does not* weight-raise queues whose activations occur
++ * in a large burst. In addition, for each of these queues BFQ performs or
++ * does not perform idling depending on which choice boosts the throughput
++ * most. The exact choice depends on the device and request pattern at
++ * hand.
++ *
++ * Turning back to the next function, it implements all the steps needed
++ * to detect the occurrence of a large burst and to properly mark all the
++ * queues belonging to it (so that they can then be treated in a different
++ * way). This goal is achieved by maintaining a special "burst list" that
++ * holds, temporarily, the queues that belong to the burst in progress. The
++ * list is then used to mark these queues as belonging to a large burst if
++ * the burst does become large. The main steps are the following.
++ *
++ * . when the very first queue is activated, the queue is inserted into the
++ *   list (as it could be the first queue in a possible burst)
++ *
++ * . if the current burst has not yet become large, and a queue Q that does
++ *   not yet belong to the burst is activated shortly after the last time
++ *   at which a new queue entered the burst list, then the function appends
++ *   Q to the burst list
++ *
++ * . if, as a consequence of the previous step, the burst size reaches
++ *   the large-burst threshold, then
++ *
++ *     . all the queues in the burst list are marked as belonging to a
++ *       large burst
++ *
++ *     . the burst list is deleted; in fact, the burst list already served
++ *       its purpose (keeping temporarily track of the queues in a burst,
++ *       so as to be able to mark them as belonging to a large burst in the
++ *       previous sub-step), and now is not needed any more
++ *
++ *     . the device enters a large-burst mode
++ *
++ * . if a queue Q that does not belong to the burst is activated while
++ *   the device is in large-burst mode and shortly after the last time
++ *   at which a queue either entered the burst list or was marked as
++ *   belonging to the current large burst, then Q is immediately marked
++ *   as belonging to a large burst.
++ *
++ * . if a queue Q that does not belong to the burst is activated a while
++ *   later, i.e., not shortly after, than the last time at which a queue
++ *   either entered the burst list or was marked as belonging to the
++ *   current large burst, then the current burst is deemed as finished and:
++ *
++ *        . the large-burst mode is reset if set
++ *
++ *        . the burst list is emptied
++ *
++ *        . Q is inserted in the burst list, as Q may be the first queue
++ *          in a possible new burst (then the burst list contains just Q
++ *          after this step).
++ */
++static void bfq_handle_burst(struct bfq_data *bfqd, struct bfq_queue *bfqq,
++			     bool idle_for_long_time)
++{
++	/*
++	 * If bfqq happened to be activated in a burst, but has been idle
++	 * for at least as long as an interactive queue, then we assume
++	 * that, in the overall I/O initiated in the burst, the I/O
++	 * associated to bfqq is finished. So bfqq does not need to be
++	 * treated as a queue belonging to a burst anymore. Accordingly,
++	 * we reset bfqq's in_large_burst flag if set, and remove bfqq
++	 * from the burst list if it's there. We do not decrement instead
++	 * burst_size, because the fact that bfqq does not need to belong
++	 * to the burst list any more does not invalidate the fact that
++	 * bfqq may have been activated during the current burst.
++	 */
++	if (idle_for_long_time) {
++		hlist_del_init(&bfqq->burst_list_node);
++		bfq_clear_bfqq_in_large_burst(bfqq);
++	}
++
++	/*
++	 * If bfqq is already in the burst list or is part of a large
++	 * burst, then there is nothing else to do.
++	 */
++	if (!hlist_unhashed(&bfqq->burst_list_node) ||
++	    bfq_bfqq_in_large_burst(bfqq))
++		return;
++
++	/*
++	 * If bfqq's activation happens late enough, then the current
++	 * burst is finished, and related data structures must be reset.
++	 *
++	 * In this respect, consider the special case where bfqq is the very
++	 * first queue being activated. In this case, last_ins_in_burst is
++	 * not yet significant when we get here. But it is easy to verify
++	 * that, whether or not the following condition is true, bfqq will
++	 * end up being inserted into the burst list. In particular the
++	 * list will happen to contain only bfqq. And this is exactly what
++	 * has to happen, as bfqq may be the first queue in a possible
++	 * burst.
++	 */
++	if (time_is_before_jiffies(bfqd->last_ins_in_burst +
++	    bfqd->bfq_burst_interval)) {
++		bfqd->large_burst = false;
++		bfq_reset_burst_list(bfqd, bfqq);
++		return;
++	}
++
++	/*
++	 * If we get here, then bfqq is being activated shortly after the
++	 * last queue. So, if the current burst is also large, we can mark
++	 * bfqq as belonging to this large burst immediately.
++	 */
++	if (bfqd->large_burst) {
++		bfq_mark_bfqq_in_large_burst(bfqq);
++		return;
++	}
++
++	/*
++	 * If we get here, then a large-burst state has not yet been
++	 * reached, but bfqq is being activated shortly after the last
++	 * queue. Then we add bfqq to the burst.
++	 */
++	bfq_add_to_burst(bfqd, bfqq);
++}
++
 +static void bfq_add_request(struct request *rq)
 +{
 +	struct bfq_queue *bfqq = RQ_BFQQ(rq);
@@ -1609,7 +1848,7 @@ index 0000000..1820333
 +	struct bfq_data *bfqd = bfqq->bfqd;
 +	struct request *next_rq, *prev;
 +	unsigned long old_wr_coeff = bfqq->wr_coeff;
-+	int idle_for_long_time = 0;
++	bool interactive = false;
 +
 +	bfq_log_bfqq(bfqd, bfqq, "add_request %d", rq_is_sync(rq));
 +	bfqq->queued[rq_is_sync(rq)]++;
@@ -1632,11 +1871,35 @@ index 0000000..1820333
 +		bfq_rq_pos_tree_add(bfqd, bfqq);
 +
 +	if (!bfq_bfqq_busy(bfqq)) {
-+		int soft_rt = bfqd->bfq_wr_max_softrt_rate > 0 &&
++		bool soft_rt,
++		     idle_for_long_time = time_is_before_jiffies(
++						bfqq->budget_timeout +
++						bfqd->bfq_wr_min_idle_time);
++
++		if (bfq_bfqq_sync(bfqq)) {
++			bool already_in_burst =
++			   !hlist_unhashed(&bfqq->burst_list_node) ||
++			   bfq_bfqq_in_large_burst(bfqq);
++			bfq_handle_burst(bfqd, bfqq, idle_for_long_time);
++			/*
++			 * If bfqq was not already in the current burst,
++			 * then, at this point, bfqq either has been
++			 * added to the current burst or has caused the
++			 * current burst to terminate. In particular, in
++			 * the second case, bfqq has become the first
++			 * queue in a possible new burst.
++			 * In both cases last_ins_in_burst needs to be
++			 * moved forward.
++			 */
++			if (!already_in_burst)
++				bfqd->last_ins_in_burst = jiffies;
++		}
++
++		soft_rt = bfqd->bfq_wr_max_softrt_rate > 0 &&
++			!bfq_bfqq_in_large_burst(bfqq) &&
 +			time_is_before_jiffies(bfqq->soft_rt_next_start);
-+		idle_for_long_time = time_is_before_jiffies(
-+			bfqq->budget_timeout +
-+			bfqd->bfq_wr_min_idle_time);
++		interactive = !bfq_bfqq_in_large_burst(bfqq) &&
++			      idle_for_long_time;
 +		entity->budget = max_t(unsigned long, bfqq->max_budget,
 +				       bfq_serv_to_charge(next_rq, bfqq));
 +
@@ -1659,9 +1922,9 @@ index 0000000..1820333
 +		 * If the queue is not being boosted and has been idle
 +		 * for enough time, start a weight-raising period
 +		 */
-+		if (old_wr_coeff == 1 && (idle_for_long_time || soft_rt)) {
++		if (old_wr_coeff == 1 && (interactive || soft_rt)) {
 +			bfqq->wr_coeff = bfqd->bfq_wr_coeff;
-+			if (idle_for_long_time)
++			if (interactive)
 +				bfqq->wr_cur_max_time = bfq_wr_duration(bfqd);
 +			else
 +				bfqq->wr_cur_max_time =
@@ -1671,11 +1934,12 @@ index 0000000..1820333
 +				     jiffies,
 +				     jiffies_to_msecs(bfqq->wr_cur_max_time));
 +		} else if (old_wr_coeff > 1) {
-+			if (idle_for_long_time)
++			if (interactive)
 +				bfqq->wr_cur_max_time = bfq_wr_duration(bfqd);
-+			else if (bfqq->wr_cur_max_time ==
-+				 bfqd->bfq_wr_rt_max_time &&
-+				 !soft_rt) {
++			else if (bfq_bfqq_in_large_burst(bfqq) ||
++				 (bfqq->wr_cur_max_time ==
++				  bfqd->bfq_wr_rt_max_time &&
++				  !soft_rt)) {
 +				bfqq->wr_coeff = 1;
 +				bfq_log_bfqq(bfqd, bfqq,
 +					"wrais ending at %lu, rais_max_time %u",
@@ -1764,8 +2028,7 @@ index 0000000..1820333
 +	}
 +
 +	if (bfqd->low_latency &&
-+		(old_wr_coeff == 1 || bfqq->wr_coeff == 1 ||
-+		 idle_for_long_time))
++		(old_wr_coeff == 1 || bfqq->wr_coeff == 1 || interactive))
 +		bfqq->last_wr_start_finish = jiffies;
 +}
 +
@@ -2268,9 +2531,7 @@ index 0000000..1820333
 +	return rq;
 +}
 +
-+/*
-+ * Must be called with the queue_lock held.
-+ */
++/* Must be called with the queue_lock held. */
 +static int bfqq_process_refs(struct bfq_queue *bfqq)
 +{
 +	int process_refs, io_refs;
@@ -2873,16 +3134,26 @@ index 0000000..1820333
 + * long comment, we try to briefly describe all the details and motivations
 + * behind the components of this logical expression.
 + *
-+ * First, the expression may be true only for sync queues. Besides, if
-+ * bfqq is also being weight-raised, then the expression always evaluates
-+ * to true, as device idling is instrumental for preserving low-latency
-+ * guarantees (see [1]). Otherwise, the expression evaluates to true only
-+ * if bfqq has a non-null idle window and at least one of the following
-+ * two conditions holds. The first condition is that the device is not
-+ * performing NCQ, because idling the device most certainly boosts the
-+ * throughput if this condition holds and bfqq has been granted a non-null
-+ * idle window. The second compound condition is made of the logical AND of
-+ * two components.
++ * First, the expression is false if bfqq is not sync, or if: bfqq happened
++ * to become active during a large burst of queue activations, and the
++ * pattern of requests bfqq contains boosts the throughput if bfqq is
++ * expired. In fact, queues that became active during a large burst benefit
++ * only from throughput, as discussed in the comments to bfq_handle_burst.
++ * In this respect, expiring bfqq certainly boosts the throughput on NCQ-
++ * capable flash-based devices, whereas, on rotational devices, it boosts
++ * the throughput only if bfqq contains random requests.
++ *
++ * On the opposite end, if (a) bfqq is sync, (b) the above burst-related
++ * condition does not hold, and (c) bfqq is being weight-raised, then the
++ * expression always evaluates to true, as device idling is instrumental
++ * for preserving low-latency guarantees (see [1]). If, instead, conditions
++ * (a) and (b) do hold, but (c) does not, then the expression evaluates to
++ * true only if: (1) bfqq is I/O-bound and has a non-null idle window, and
++ * (2) at least one of the following two conditions holds.
++ * The first condition is that the device is not performing NCQ, because
++ * idling the device most certainly boosts the throughput if this condition
++ * holds and bfqq is I/O-bound and has been granted a non-null idle window.
++ * The second compound condition is made of the logical AND of two components.
 + *
 + * The first component is true only if there is no weight-raised busy
 + * queue. This guarantees that the device is not idled for a sync non-
@@ -2999,6 +3270,12 @@ index 0000000..1820333
 +#define cond_for_seeky_on_ncq_hdd (bfq_bfqq_constantly_seeky(bfqq) && \
 +				   bfqd->busy_in_flight_queues == \
 +				   bfqd->const_seeky_busy_in_flight_queues)
++
++#define cond_for_expiring_in_burst	(bfq_bfqq_in_large_burst(bfqq) && \
++					 bfqd->hw_tag && \
++					 (blk_queue_nonrot(bfqd->queue) || \
++					  bfq_bfqq_constantly_seeky(bfqq)))
++
 +/*
 + * Condition for expiring a non-weight-raised queue (and hence not idling
 + * the device).
@@ -3010,9 +3287,9 @@ index 0000000..1820333
 +				      cond_for_seeky_on_ncq_hdd))))
 +
 +	return bfq_bfqq_sync(bfqq) &&
-+		(bfq_bfqq_IO_bound(bfqq) || bfqq->wr_coeff > 1) &&
++		!cond_for_expiring_in_burst &&
 +		(bfqq->wr_coeff > 1 ||
-+		 (bfq_bfqq_idle_window(bfqq) &&
++		 (bfq_bfqq_IO_bound(bfqq) && bfq_bfqq_idle_window(bfqq) &&
 +		  !cond_for_expiring_non_wr)
 +	);
 +}
@@ -3156,10 +3433,12 @@ index 0000000..1820333
 +		if (entity->ioprio_changed)
 +			bfq_log_bfqq(bfqd, bfqq, "WARN: pending prio change");
 +		/*
-+		 * If too much time has elapsed from the beginning
-+		 * of this weight-raising, stop it.
++		 * If the queue was activated in a burst, or
++		 * too much time has elapsed from the beginning
++		 * of this weight-raising, then end weight raising.
 +		 */
-+		if (time_is_before_jiffies(bfqq->last_wr_start_finish +
++		if (bfq_bfqq_in_large_burst(bfqq) ||
++		    time_is_before_jiffies(bfqq->last_wr_start_finish +
 +					   bfqq->wr_cur_max_time)) {
 +			bfqq->last_wr_start_finish = jiffies;
 +			bfq_log_bfqq(bfqd, bfqq,
@@ -3364,6 +3643,17 @@ index 0000000..1820333
 +	BUG_ON(bfq_bfqq_busy(bfqq));
 +	BUG_ON(bfqd->in_service_queue == bfqq);
 +
++	if (bfq_bfqq_sync(bfqq))
++		/*
++		 * The fact that this queue is being destroyed does not
++		 * invalidate the fact that this queue may have been
++		 * activated during the current burst. As a consequence,
++		 * although the queue does not exist anymore, and hence
++		 * needs to be removed from the burst list if there,
++		 * the burst size has not to be decremented.
++		 */
++		hlist_del_init(&bfqq->burst_list_node);
++
 +	bfq_log_bfqq(bfqd, bfqq, "put_queue: %p freed", bfqq);
 +
 +	kmem_cache_free(bfq_pool, bfqq);
@@ -3517,6 +3807,7 @@ index 0000000..1820333
 +{
 +	RB_CLEAR_NODE(&bfqq->entity.rb_node);
 +	INIT_LIST_HEAD(&bfqq->fifo);
++	INIT_HLIST_NODE(&bfqq->burst_list_node);
 +
 +	atomic_set(&bfqq->ref, 0);
 +	bfqq->bfqd = bfqd;
@@ -4220,14 +4511,22 @@ index 0000000..1820333
 +	kfree(bfqd);
 +}
 +
-+static int bfq_init_queue(struct request_queue *q)
++static int bfq_init_queue(struct request_queue *q, struct elevator_type *e)
 +{
 +	struct bfq_group *bfqg;
 +	struct bfq_data *bfqd;
++	struct elevator_queue *eq;
++
++	eq = elevator_alloc(q, e);
++	if (eq == NULL)
++		return -ENOMEM;
 +
 +	bfqd = kzalloc_node(sizeof(*bfqd), GFP_KERNEL, q->node);
-+	if (bfqd == NULL)
++	if (bfqd == NULL) {
++		kobject_put(&eq->kobj);
 +		return -ENOMEM;
++	}
++	eq->elevator_data = bfqd;
 +
 +	/*
 +	 * Our fallback bfqq if bfq_find_alloc_queue() runs into OOM issues.
@@ -4238,11 +4537,15 @@ index 0000000..1820333
 +	atomic_inc(&bfqd->oom_bfqq.ref);
 +
 +	bfqd->queue = q;
-+	q->elevator->elevator_data = bfqd;
++
++	spin_lock_irq(q->queue_lock);
++	q->elevator = eq;
++	spin_unlock_irq(q->queue_lock);
 +
 +	bfqg = bfq_alloc_root_group(bfqd, q->node);
 +	if (bfqg == NULL) {
 +		kfree(bfqd);
++		kobject_put(&eq->kobj);
 +		return -ENOMEM;
 +	}
 +
@@ -4263,6 +4566,7 @@ index 0000000..1820333
 +
 +	INIT_LIST_HEAD(&bfqd->active_list);
 +	INIT_LIST_HEAD(&bfqd->idle_list);
++	INIT_HLIST_HEAD(&bfqd->burst_list);
 +
 +	bfqd->hw_tag = -1;
 +
@@ -4282,6 +4586,9 @@ index 0000000..1820333
 +	bfqd->bfq_coop_thresh = 2;
 +	bfqd->bfq_failed_cooperations = 7000;
 +	bfqd->bfq_requests_within_timer = 120;
++
++	bfqd->bfq_large_burst_thresh = 11;
++	bfqd->bfq_burst_interval = msecs_to_jiffies(500);
 +
 +	bfqd->low_latency = true;
 +
@@ -4618,7 +4925,7 @@ index 0000000..1820333
 +	device_speed_thresh[1] = (R_fast[1] + R_slow[1]) / 2;
 +
 +	elv_register(&iosched_bfq);
-+	pr_info("BFQ I/O-scheduler version: v7r5");
++	pr_info("BFQ I/O-scheduler version: v7r6");
 +
 +	return 0;
 +}
@@ -5849,12 +6156,12 @@ index 0000000..c4831b7
 +}
 diff --git a/block/bfq.h b/block/bfq.h
 new file mode 100644
-index 0000000..ca34774
+index 0000000..4725113
 --- /dev/null
 +++ b/block/bfq.h
-@@ -0,0 +1,740 @@
+@@ -0,0 +1,773 @@
 +/*
-+ * BFQ-v7r5 for 3.10.0: data structures and common functions prototypes.
++ * BFQ-v7r6 for 3.14.0: data structures and common functions prototypes.
 + *
 + * Based on ideas and code from CFQ:
 + * Copyright (C) 2003 Jens Axboe <axboe@kernel.dk>
@@ -6051,6 +6358,7 @@ index 0000000..ca34774
 + * @dispatched: number of requests on the dispatch list or inside driver.
 + * @flags: status flags.
 + * @bfqq_list: node for active/idle bfqq list inside our bfqd.
++ * @burst_list_node: node for the device's burst list.
 + * @seek_samples: number of seeks sampled
 + * @seek_total: sum of the distances of the seeks sampled
 + * @seek_mean: mean seek distance
@@ -6110,6 +6418,8 @@ index 0000000..ca34774
 +	unsigned int flags;
 +
 +	struct list_head bfqq_list;
++
++	struct hlist_node burst_list_node;
 +
 +	unsigned int seek_samples;
 +	u64 seek_total;
@@ -6263,22 +6573,38 @@ index 0000000..ca34774
 + *                             again idling to a queue which was marked as
 + *                             non-I/O-bound (see the definition of the
 + *                             IO_bound flag for further details).
-+ * @bfq_wr_coeff: Maximum factor by which the weight of a weight-raised
-+ *                queue is multiplied
-+ * @bfq_wr_max_time: maximum duration of a weight-raising period (jiffies)
-+ * @bfq_wr_rt_max_time: maximum duration for soft real-time processes
++ * @last_ins_in_burst: last time at which a queue entered the current
++ *                     burst of queues being activated shortly after
++ *                     each other; for more details about this and the
++ *                     following parameters related to a burst of
++ *                     activations, see the comments to the function
++ *                     @bfq_handle_burst.
++ * @bfq_burst_interval: reference time interval used to decide whether a
++ *                      queue has been activated shortly after
++ *                      @last_ins_in_burst.
++ * @burst_size: number of queues in the current burst of queue activations.
++ * @bfq_large_burst_thresh: maximum burst size above which the current
++ * 			    queue-activation burst is deemed as 'large'.
++ * @large_burst: true if a large queue-activation burst is in progress.
++ * @burst_list: head of the burst list (as for the above fields, more details
++ * 		in the comments to the function bfq_handle_burst).
++ * @low_latency: if set to true, low-latency heuristics are enabled.
++ * @bfq_wr_coeff: maximum factor by which the weight of a weight-raised
++ *                queue is multiplied.
++ * @bfq_wr_max_time: maximum duration of a weight-raising period (jiffies).
++ * @bfq_wr_rt_max_time: maximum duration for soft real-time processes.
 + * @bfq_wr_min_idle_time: minimum idle period after which weight-raising
-+ *			  may be reactivated for a queue (in jiffies)
++ *			  may be reactivated for a queue (in jiffies).
 + * @bfq_wr_min_inter_arr_async: minimum period between request arrivals
 + *				after which weight-raising may be
 + *				reactivated for an already busy queue
-+ *				(in jiffies)
++ *				(in jiffies).
 + * @bfq_wr_max_softrt_rate: max service-rate for a soft real-time queue,
-+ *			    sectors per seconds
++ *			    sectors per seconds.
 + * @RT_prod: cached value of the product R*T used for computing the maximum
-+ *	     duration of the weight raising automatically
-+ * @device_speed: device-speed class for the low-latency heuristic
-+ * @oom_bfqq: fallback dummy bfqq for extreme OOM conditions
++ *	     duration of the weight raising automatically.
++ * @device_speed: device-speed class for the low-latency heuristic.
++ * @oom_bfqq: fallback dummy bfqq for extreme OOM conditions.
 + *
 + * All the fields are protected by the @queue lock.
 + */
@@ -6342,6 +6668,13 @@ index 0000000..ca34774
 +	unsigned int bfq_failed_cooperations;
 +	unsigned int bfq_requests_within_timer;
 +
++	unsigned long last_ins_in_burst;
++	unsigned long bfq_burst_interval;
++	int burst_size;
++	unsigned long bfq_large_burst_thresh;
++	bool large_burst;
++	struct hlist_head burst_list;
++
 +	bool low_latency;
 +
 +	/* parameters of the low_latency heuristics */
@@ -6370,6 +6703,10 @@ index 0000000..ca34774
 +					 * bfqq has timed-out at least once
 +					 * having consumed at most 2/10 of
 +					 * its budget
++					 */
++	BFQ_BFQQ_FLAG_in_large_burst,	/*
++					 * bfqq activated in a large burst,
++					 * see comments to bfq_handle_burst.
 +					 */
 +	BFQ_BFQQ_FLAG_constantly_seeky,	/*
 +					 * bfqq has proved to be slow and
@@ -6406,6 +6743,7 @@ index 0000000..ca34774
 +BFQ_BFQQ_FNS(sync);
 +BFQ_BFQQ_FNS(budget_new);
 +BFQ_BFQQ_FNS(IO_bound);
++BFQ_BFQQ_FNS(in_large_burst);
 +BFQ_BFQQ_FNS(constantly_seeky);
 +BFQ_BFQQ_FNS(coop);
 +BFQ_BFQQ_FNS(split_coop);
@@ -6485,6 +6823,7 @@ index 0000000..ca34774
 +/**
 + * struct bfqio_cgroup - bfq cgroup data structure.
 + * @css: subsystem state for bfq in the containing cgroup.
++ * @online: flag marked when the subsystem is inserted.
 + * @weight: cgroup weight.
 + * @ioprio: cgroup ioprio.
 + * @ioprio_class: cgroup ioprio_class.
@@ -6496,6 +6835,7 @@ index 0000000..ca34774
 + */
 +struct bfqio_cgroup {
 +	struct cgroup_subsys_state css;
++	bool online;
 +
 +	unsigned short weight, ioprio, ioprio_class;
 +
@@ -6524,15 +6864,15 @@ index 0000000..ca34774
 +}
 +
 +static inline struct bfq_queue *bic_to_bfqq(struct bfq_io_cq *bic,
-+					    int is_sync)
++					    bool is_sync)
 +{
-+	return bic->bfqq[!!is_sync];
++	return bic->bfqq[is_sync];
 +}
 +
 +static inline void bic_set_bfqq(struct bfq_io_cq *bic,
-+				struct bfq_queue *bfqq, int is_sync)
++				struct bfq_queue *bfqq, bool is_sync)
 +{
-+	bic->bfqq[!!is_sync] = bfqq;
++	bic->bfqq[is_sync] = bfqq;
 +}
 +
 +static inline struct bfq_data *bic_to_bfqd(struct bfq_io_cq *bic)
@@ -6594,5 +6934,5 @@ index 0000000..ca34774
 +
 +#endif /* _BFQ_H */
 -- 
-1.9.3
+2.1.2
 

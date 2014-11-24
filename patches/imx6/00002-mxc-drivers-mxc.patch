@@ -1,0 +1,1254 @@
+diff --git a/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_types.h b/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_types.h
+index 14801aa..b446529 100644
+--- a/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_types.h
++++ b/drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_types.h
+@@ -1047,6 +1047,7 @@ typedef enum _gcePATCH_ID
+     gcePATCH_CHORME,
+     gcePATCH_DUOKANTV,
+     gcePATCH_TESTAPP,
++    gcePATCH_GOOGLEEARTH,
+ 
+     /* Count enum*/
+     gcePATCH_COUNT,
+diff --git a/drivers/mxc/ipu3/ipu_calc_stripes_sizes.c b/drivers/mxc/ipu3/ipu_calc_stripes_sizes.c
+index ea54707..aac300b 100644
+--- a/drivers/mxc/ipu3/ipu_calc_stripes_sizes.c
++++ b/drivers/mxc/ipu3/ipu_calc_stripes_sizes.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2009-2013 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2009-2014 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -19,6 +19,8 @@
+  * @ingroup IPU
+  */
+ 
++//#define DEBUG
++
+ #include <linux/ipu-v3.h>
+ #include <linux/module.h>
+ #include <linux/math64.h>
+@@ -295,7 +297,8 @@ int ipu_calc_stripes_sizes(const unsigned int input_frame_width,
+ 	    || ((((u64)output_frame_width) << 32) <
+ 		(2 * ((((u64)output_f) << 32) + (input_f * rr_opt))))
+ 	    || (maximal_stripe_width < output_f)
+-	    || (output_frame_width <= maximal_stripe_width)
++	    || ((output_frame_width <= maximal_stripe_width)
++		&& (equal_stripes == 0))
+ 	    || ((2 * maximal_stripe_width) < output_frame_width))
+ 		return 1;
+ 
+@@ -387,8 +390,11 @@ int ipu_calc_stripes_sizes(const unsigned int input_frame_width,
+ 						     &resize_coeff,
+ 						     &downsize_coeff) < 0)
+ 				return -EINVAL;
+-			left->irr = right->irr =
+-				(downsize_coeff << 14) | resize_coeff;
++
++			if (downsize_coeff > 0) {
++				left->irr = right->irr =
++					(downsize_coeff << 14) | resize_coeff;
++			}
+ 		}
+ 		pr_debug("inw %d, onw %d, ilw %d, ilc %d, olw %d,"
+ 			 " irw %d, irc %d, orw %d, orc %d, "
+diff --git a/drivers/mxc/ipu3/ipu_capture.c b/drivers/mxc/ipu3/ipu_capture.c
+index a14b0ea..293b5ec 100644
+--- a/drivers/mxc/ipu3/ipu_capture.c
++++ b/drivers/mxc/ipu3/ipu_capture.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2008-2013 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2008-2014 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -18,6 +18,7 @@
+  *
+  * @ingroup IPU
+  */
++
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/errno.h>
+@@ -100,6 +101,7 @@ ipu_csi_init_interface(struct ipu_soc *ipu, uint16_t width, uint16_t height,
+ 		break;
+ 	case IPU_PIX_FMT_GENERIC:
+ 	case IPU_PIX_FMT_GENERIC_16:
++        case IPU_PIX_FMT_GREY:
+ 		cfg_param.data_fmt = CSI_SENS_CONF_DATA_FMT_BAYER;
+ 		break;
+ 	case IPU_PIX_FMT_RGB565:
+@@ -131,10 +133,6 @@ ipu_csi_init_interface(struct ipu_soc *ipu, uint16_t width, uint16_t height,
+ 
+ 	ipu_csi_write(ipu, csi, data, CSI_SENS_CONF);
+ 
+-	/* Setup the mclk */
+-	if (cfg_param.mclk > 0)
+-		_ipu_csi_mclk_set(ipu, cfg_param.mclk, csi);
+-
+ 	/* Setup sensor frame size */
+ 	ipu_csi_write(ipu, csi, (width - 1) | (height - 1) << 16, CSI_SENS_FRM_SIZE);
+ 
+@@ -146,29 +144,30 @@ ipu_csi_init_interface(struct ipu_soc *ipu, uint16_t width, uint16_t height,
+ 		if (width == 720 && height == 625) {
+ 			/* PAL case */
+ 			/*
+-			 * Field0BlankEnd = 0x7, Field0BlankStart = 0x3,
+-			 * Field0ActiveEnd = 0x5, Field0ActiveStart = 0x1
++			 * Field0BlankEnd = 0x6, Field0BlankStart = 0x2,
++			 * Field0ActiveEnd = 0x4, Field0ActiveStart = 0
+ 			 */
+-			ipu_csi_write(ipu, csi, 0xD07DF, CSI_CCIR_CODE_1);
++			ipu_csi_write(ipu, csi, 0x40596, CSI_CCIR_CODE_1);
+ 			/*
+-			 * Field1BlankEnd = 0x6, Field1BlankStart = 0x2,
+-			 * Field1ActiveEnd = 0x4, Field1ActiveStart = 0
++			 * Field1BlankEnd = 0x7, Field1BlankStart = 0x3,
++			 * Field1ActiveEnd = 0x5, Field1ActiveStart = 0x1
+ 			 */
+-			ipu_csi_write(ipu, csi, 0x40596, CSI_CCIR_CODE_2);
++			ipu_csi_write(ipu, csi, 0xD07DF, CSI_CCIR_CODE_2);
++
+ 			ipu_csi_write(ipu, csi, 0xFF0000, CSI_CCIR_CODE_3);
+ 
+ 		} else if (width == 720 && height == 525) {
+ 			/* NTSC case */
+ 			/*
+-			 * Field1BlankEnd = 0x6, Field1BlankStart = 0x2,
+-			 * Field1ActiveEnd = 0x4, Field1ActiveStart = 0
+-			 */
+-			ipu_csi_write(ipu, csi, 0x40596, CSI_CCIR_CODE_1);
+-			/*
+ 			 * Field0BlankEnd = 0x7, Field0BlankStart = 0x3,
+ 			 * Field0ActiveEnd = 0x5, Field0ActiveStart = 0x1
+ 			 */
+-			ipu_csi_write(ipu, csi, 0xD07DF, CSI_CCIR_CODE_2);
++			ipu_csi_write(ipu, csi, 0xD07DF, CSI_CCIR_CODE_1);
++			/*
++			 * Field1BlankEnd = 0x6, Field1BlankStart = 0x2,
++			 * Field1ActiveEnd = 0x4, Field1ActiveStart = 0
++			 */
++			ipu_csi_write(ipu, csi, 0x40596, CSI_CCIR_CODE_2);
+ 			ipu_csi_write(ipu, csi, 0xFF0000, CSI_CCIR_CODE_3);
+ 		} else {
+ 			dev_err(ipu->dev, "Unsupported CCIR656 interlaced "
+@@ -192,7 +191,10 @@ ipu_csi_init_interface(struct ipu_soc *ipu, uint16_t width, uint16_t height,
+ 	} else if ((cfg_param.clk_mode == IPU_CSI_CLK_MODE_GATED_CLK) ||
+ 		   (cfg_param.clk_mode == IPU_CSI_CLK_MODE_NONGATED_CLK)) {
+ 		_ipu_csi_ccir_err_detection_disable(ipu, csi);
+-	}
++	} else {
++               dev_err(ipu->dev, "%s(%i) %s: unrecognized sensor configuration",
++                __FILE__, __LINE__, __FUNCTION__);
++        }
+ 
+ 	dev_dbg(ipu->dev, "CSI_SENS_CONF = 0x%08X\n",
+ 		ipu_csi_read(ipu, csi, CSI_SENS_CONF));
+diff --git a/drivers/mxc/ipu3/ipu_common.c b/drivers/mxc/ipu3/ipu_common.c
+index 16b520b..ae1215e 100644
+--- a/drivers/mxc/ipu3/ipu_common.c
++++ b/drivers/mxc/ipu3/ipu_common.c
+@@ -18,6 +18,8 @@
+  *
+  * @ingroup IPU
+  */
++//#define DEBUG
++
+ #include <linux/busfreq-imx6.h>
+ #include <linux/clk.h>
+ #include <linux/clk-provider.h>
+@@ -465,12 +467,6 @@ static int ipu_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	ipu->online = true;
+-	ret = ipu_clk_setup_enable(ipu, pltfm_data);
+-	if (ret < 0) {
+-		dev_err(ipu->dev, "ipu clk setup failed\n");
+-		ipu->online = false;
+-		return ret;
+-	}
+ 
+ 	platform_set_drvdata(pdev, ipu);
+ 
+@@ -490,6 +486,14 @@ static int ipu_probe(struct platform_device *pdev)
+ 			     IPU_DISP_GEN);
+ 	}
+ 
++	/* setup ipu clk tree after ipu reset  */
++	ret = ipu_clk_setup_enable(ipu, pltfm_data);
++	if (ret < 0) {
++		dev_err(ipu->dev, "ipu clk setup failed\n");
++		ipu->online = false;
++		return ret;
++	}
++
+ 	/* Set sync refresh channels and CSI->mem channel as high priority */
+ 	ipu_idmac_write(ipu, 0x18800001L, IDMAC_CHA_PRI(0));
+ 
+@@ -801,7 +805,6 @@ int32_t ipu_init_channel(struct ipu_soc *ipu, ipu_channel_t channel, ipu_channel
+ 		ipu->using_ic_dirct_ch = MEM_VDI_MEM;
+ 		ipu->ic_use_count++;
+ 		ipu->vdi_use_count++;
+-		_ipu_ic_init_prpvf(ipu, params, false);
+ 		_ipu_vdi_init(ipu, channel, params);
+ 		break;
+ 	case MEM_ROT_VF_MEM:
+@@ -925,6 +928,7 @@ int32_t ipu_init_channel(struct ipu_soc *ipu, ipu_channel_t channel, ipu_channel
+ 
+ 	ipu_cm_write(ipu, ipu_conf, IPU_CONF);
+ 
++        ipu_dump_registers(ipu);
+ err:
+ 	mutex_unlock(&ipu->mutex_lock);
+ 	return ret;
+@@ -1042,7 +1046,6 @@ void ipu_uninit_channel(struct ipu_soc *ipu, ipu_channel_t channel)
+ 		ipu->vdi_use_count--;
+ 		if (ipu->using_ic_dirct_ch == MEM_VDI_MEM)
+ 			ipu->using_ic_dirct_ch = 0;
+-		_ipu_ic_uninit_prpvf(ipu);
+ 		_ipu_vdi_uninit(ipu);
+ 		break;
+ 	case MEM_VDI_PRP_VF_MEM_P:
+@@ -2968,6 +2971,7 @@ uint32_t bytes_per_pixel(uint32_t fmt)
+ {
+ 	switch (fmt) {
+ 	case IPU_PIX_FMT_GENERIC:	/*generic data */
++        case IPU_PIX_FMT_GREY:
+ 	case IPU_PIX_FMT_RGB332:
+ 	case IPU_PIX_FMT_YUV420P:
+ 	case IPU_PIX_FMT_YVU420P:
+diff --git a/drivers/mxc/ipu3/ipu_device.c b/drivers/mxc/ipu3/ipu_device.c
+index 19ee573..8fb0113 100644
+--- a/drivers/mxc/ipu3/ipu_device.c
++++ b/drivers/mxc/ipu3/ipu_device.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2005-2013 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2005-2014 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -18,6 +18,8 @@
+  *
+  * @ingroup IPU
+  */
++//#define DEBUG
++
+ #include <linux/clk.h>
+ #include <linux/cpumask.h>
+ #include <linux/delay.h>
+@@ -286,6 +288,7 @@ struct ipu_task_entry {
+ 	u8	task_in_list;
+ 	u8	split_done;
+ 	struct mutex split_lock;
++	struct mutex vdic_lock;
+ 	wait_queue_head_t split_waitq;
+ 
+ 	struct list_head node;
+@@ -420,6 +423,7 @@ unsigned int fmt_to_bpp(unsigned int pixelformat)
+ 	/*non-interleaved 422*/
+ 	case IPU_PIX_FMT_YUV422P:
+ 	case IPU_PIX_FMT_YVU422P:
++        case IPU_PIX_FMT_GENERIC:
+ 		bpp = 16;
+ 		break;
+ 	case IPU_PIX_FMT_BGR24:
+@@ -1697,10 +1701,12 @@ static int queue_split_task(struct ipu_task_entry *t,
+ 	int i, j;
+ 	struct ipu_task_entry *tsk = NULL;
+ 	struct mutex *lock = &t->split_lock;
++	struct mutex *vdic_lock = &t->vdic_lock;
+ 
+ 	dev_dbg(t->dev, "Split task 0x%p, no-0x%x, size:%d\n",
+ 			 t, t->task_no, size);
+ 	mutex_init(lock);
++	mutex_init(vdic_lock);
+ 	init_waitqueue_head(&t->split_waitq);
+ 	INIT_LIST_HEAD(&t->split_list);
+ 	for (j = 0; j < size; j++) {
+@@ -2386,27 +2392,33 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 	u32 stripe_mode;
+ 	u32 task_no;
+ 	u32 i, offset_addr;
++	u32 line_size;
+ 	unsigned char  *base_off;
+ 	struct ipu_task_entry *parent = t->parent;
++	struct mutex *lock = &parent->vdic_lock;
+ 
+ 	if (!parent) {
+ 		dev_err(t->dev, "ERR[0x%x]invalid parent\n", t->task_no);
+ 		return;
+ 	}
++	mutex_lock(lock);
+ 	stripe_mode = t->task_no & 0xf;
+ 	task_no = t->task_no >> 4;
+ 
+-	base_off = (char *) __va(t->output.paddr);
+-	if (base_off == NULL) {
+-		dev_err(t->dev, "ERR[0x%p]Falied get vitual address\n", t);
+-		return;
+-	}
++	/* Save both luma and chroma part for interleaved YUV(e.g. YUYV).
++	 * Save luma part for non-interleaved and partial-interleaved
++	 * YUV format (e.g NV12 and YV12). */
++	if (t->output.format == IPU_PIX_FMT_YUYV ||
++			t->output.format == IPU_PIX_FMT_UYVY)
++		line_size = t->output.crop.w * fmt_to_bpp(t->output.format)/8;
++	else
++		line_size = t->output.crop.w;
+ 
+ 	vdi_save_lines = (t->output.crop.h - t->set.sp_setting.ud_split_line)/2;
+-	vdi_size = vdi_save_lines * t->output.crop.w * 2;
+-
++	vdi_size = vdi_save_lines * line_size;
+ 	if (vdi_save_lines <= 0) {
+ 		dev_err(t->dev, "[0x%p] vdi_save_line error\n", (void *)t);
++		mutex_unlock(lock);
+ 		return;
+ 	}
+ 
+@@ -2422,6 +2434,7 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 		if (parent->vditmpbuf[0] == NULL) {
+ 			dev_err(t->dev,
+ 				"[0x%p]Falied Alloc vditmpbuf[0]\n", (void *)t);
++			mutex_unlock(lock);
+ 			return;
+ 		}
+ 		memset(parent->vditmpbuf[0], 0, vdi_size);
+@@ -2430,6 +2443,7 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 		if (parent->vditmpbuf[1] == NULL) {
+ 			dev_err(t->dev,
+ 				"[0x%p]Falied Alloc vditmpbuf[1]\n", (void *)t);
++			mutex_unlock(lock);
+ 			return;
+ 		}
+ 		memset(parent->vditmpbuf[1], 0, vdi_size);
+@@ -2438,6 +2452,20 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 		parent->old_size = vdi_size;
+ 	}
+ 
++	if (pfn_valid(t->output.paddr >> PAGE_SHIFT)) {
++		base_off = page_address(pfn_to_page(t->output.paddr >> PAGE_SHIFT));
++		base_off += t->output.paddr & ((1 << PAGE_SHIFT) - 1);
++	} else {
++		base_off = (char *)ioremap_nocache(t->output.paddr,
++				t->output.width * t->output.height *
++				fmt_to_bpp(t->output.format)/8);
++	}
++	if (base_off == NULL) {
++		dev_err(t->dev, "ERR[0x%p]Failed get virtual address\n", t);
++		mutex_unlock(lock);
++		return;
++	}
++
+ 	/* UP stripe or UP&LEFT stripe */
+ 	if ((stripe_mode == UP_STRIPE) ||
+ 			(stripe_mode == (UP_STRIPE | LEFT_STRIPE))) {
+@@ -2450,17 +2478,16 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 				t->output.paddr + offset_addr + vdi_size);
+ 
+ 			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(parent->vditmpbuf[0] + i*t->output.crop.w*2,
++				memcpy(parent->vditmpbuf[0] + i*line_size,
+ 					base_off + offset_addr +
+-					i*t->set.ostride, t->output.crop.w*2);
++					i*t->set.ostride, line_size);
+ 			parent->buf0filled = true;
+ 		} else {
+ 			offset_addr = t->set.o_off + (t->output.crop.h -
+ 					vdi_save_lines) * t->set.ostride;
+ 			for (i = 0; i < vdi_save_lines; i++)
+ 				memcpy(base_off + offset_addr + i*t->set.ostride,
+-						parent->vditmpbuf[0] + i*t->output.crop.w*2,
+-						t->output.crop.w*2);
++						parent->vditmpbuf[0] + i*line_size, line_size);
+ 
+ 			dmac_flush_range(base_off + offset_addr,
+ 					base_off + offset_addr + i*t->set.ostride);
+@@ -2480,16 +2507,16 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 					t->output.paddr + offset_addr + vdi_size);
+ 
+ 			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(parent->vditmpbuf[0] + i*t->output.crop.w*2,
++				memcpy(parent->vditmpbuf[0] + i*line_size,
+ 						base_off + offset_addr + i*t->set.ostride,
+-						t->output.crop.w*2);
++						line_size);
+ 			parent->buf0filled = true;
+ 		} else {
+ 			offset_addr = t->set.o_off;
+ 			for (i = 0; i < vdi_save_lines; i++)
+ 				memcpy(base_off + offset_addr + i*t->set.ostride,
+-						parent->vditmpbuf[0] + i*t->output.crop.w*2,
+-						t->output.crop.w*2);
++						parent->vditmpbuf[0] + i*line_size,
++						line_size);
+ 
+ 			dmac_flush_range(base_off + offset_addr,
+ 					base_off + offset_addr + i*t->set.ostride);
+@@ -2509,17 +2536,17 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 					t->output.paddr + offset_addr + vdi_size);
+ 
+ 			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(parent->vditmpbuf[1] + i*t->output.crop.w*2,
++				memcpy(parent->vditmpbuf[1] + i*line_size,
+ 						base_off + offset_addr + i*t->set.ostride,
+-						t->output.crop.w*2);
++						line_size);
+ 			parent->buf1filled = true;
+ 		} else {
+ 			offset_addr = t->set.o_off +
+ 				(t->output.crop.h - vdi_save_lines)*t->set.ostride;
+ 			for (i = 0; i < vdi_save_lines; i++)
+ 				memcpy(base_off + offset_addr + i*t->set.ostride,
+-						parent->vditmpbuf[1] + i*t->output.crop.w*2,
+-						t->output.crop.w*2);
++						parent->vditmpbuf[1] + i*line_size,
++						line_size);
+ 
+ 			dmac_flush_range(base_off + offset_addr,
+ 					base_off + offset_addr + i*t->set.ostride);
+@@ -2538,16 +2565,16 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 					t->output.paddr + offset_addr + vdi_save_lines*t->set.ostride);
+ 
+ 			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(parent->vditmpbuf[1] + i*t->output.crop.w*2,
++				memcpy(parent->vditmpbuf[1] + i*line_size,
+ 						base_off + offset_addr + i*t->set.ostride,
+-						t->output.crop.w*2);
++						line_size);
+ 			parent->buf1filled = true;
+ 		} else {
+ 			offset_addr = t->set.o_off;
+ 			for (i = 0; i < vdi_save_lines; i++)
+ 				memcpy(base_off + offset_addr + i*t->set.ostride,
+-						parent->vditmpbuf[1] + i*t->output.crop.w*2,
+-						t->output.crop.w*2);
++						parent->vditmpbuf[1] + i*line_size,
++						line_size);
+ 
+ 			dmac_flush_range(base_off + offset_addr,
+ 					base_off + offset_addr + vdi_save_lines*t->set.ostride);
+@@ -2556,6 +2583,9 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 			parent->buf1filled = false;
+ 		}
+ 	}
++	if (!pfn_valid(t->output.paddr >> PAGE_SHIFT))
++		iounmap(base_off);
++	mutex_unlock(lock);
+ }
+ 
+ static void do_task_release(struct ipu_task_entry *t, int fail)
+@@ -3203,7 +3233,7 @@ static int ipu_task_thread(void *argv)
+ 		int split_parent;
+ 		int split_child;
+ 
+-		wait_event_interruptible(thread_waitq, find_task(&tsk, curr_thread_id));
++		wait_event(thread_waitq, find_task(&tsk, curr_thread_id));
+ 
+ 		if (!tsk) {
+ 			pr_err("thread:%d can not find task.\n",
+@@ -3255,7 +3285,7 @@ static int ipu_task_thread(void *argv)
+ 					dev_err(tsk->dev,
+ 					"ERR: no-0x%x,can not get split_tsk0\n",
+ 					tsk->task_no);
+-				wake_up_interruptible(&thread_waitq);
++				wake_up(&thread_waitq);
+ 				get_res_do_task(sp_tsk0);
+ 				dev_dbg(sp_tsk0->dev,
+ 					"thread:%d complete tsk no:0x%x.\n",
+@@ -3359,7 +3389,7 @@ int ipu_queue_task(struct ipu_task *task)
+ 	tsk->task_in_list = 1;
+ 	dev_dbg(tsk->dev, "[0x%p,no-0x%x] list_add_tail\n", tsk, tsk->task_no);
+ 	spin_unlock_irqrestore(&ipu_task_list_lock, flags);
+-	wake_up_interruptible(&thread_waitq);
++	wake_up(&thread_waitq);
+ 
+ 	ret = wait_event_timeout(tsk->task_waitq, atomic_read(&tsk->done),
+ 						msecs_to_jiffies(tsk->timeout));
+diff --git a/drivers/mxc/ipu3/ipu_disp.c b/drivers/mxc/ipu3/ipu_disp.c
+index 8315bff..77e6b59 100644
+--- a/drivers/mxc/ipu3/ipu_disp.c
++++ b/drivers/mxc/ipu3/ipu_disp.c
+@@ -18,6 +18,7 @@
+  *
+  * @ingroup IPU
+  */
++//#define DEBUG
+ 
+ #include <linux/clk.h>
+ #include <linux/clk-provider.h>
+@@ -333,24 +334,24 @@ static void _ipu_dc_write_tmpl(struct ipu_soc *ipu,
+ 		reg |= (glue << 4);
+ 		reg |= (++wave << 11);
+ 		reg |= ((operand & 0x1FFFF) << 15);
+-		ipu_dc_tmpl_write(ipu, reg, word * 2);
++		ipu_dc_tmpl_write(ipu, reg, word * 8);
+ 
+ 		reg = (operand >> 17);
+ 		reg |= opcode << 7;
+ 		reg |= (stop << 9);
+-		ipu_dc_tmpl_write(ipu, reg, word * 2 + 1);
++		ipu_dc_tmpl_write(ipu, reg, word * 8 + 4);
+ 	} else {
+ 		reg = sync;
+ 		reg |= (glue << 4);
+ 		reg |= (++wave << 11);
+ 		reg |= (++map << 15);
+ 		reg |= (operand << 20) & 0xFFF00000;
+-		ipu_dc_tmpl_write(ipu, reg, word * 2);
++		ipu_dc_tmpl_write(ipu, reg, word * 8);
+ 
+ 		reg = (operand >> 12);
+ 		reg |= opcode << 4;
+ 		reg |= (stop << 9);
+-		ipu_dc_tmpl_write(ipu, reg, word * 2 + 1);
++		ipu_dc_tmpl_write(ipu, reg, word * 8 + 4);
+ 	}
+ }
+ 
+diff --git a/drivers/mxc/ipu3/ipu_ic.c b/drivers/mxc/ipu3/ipu_ic.c
+index 2da79df..d433741 100644
+--- a/drivers/mxc/ipu3/ipu_ic.c
++++ b/drivers/mxc/ipu3/ipu_ic.c
+@@ -18,6 +18,8 @@
+  *
+  * @ingroup IPU
+  */
++//#define DEBUG
++
+ #include <linux/errno.h>
+ #include <linux/init.h>
+ #include <linux/io.h>
+@@ -766,17 +768,17 @@ static void _init_csc(struct ipu_soc *ipu, uint8_t ic_task, ipu_color_space_t in
+ 	uint32_t *base = NULL;
+ 
+ 	if (ic_task == IC_TASK_ENCODER) {
+-		base = ipu->tpmem_base + 0x2008 / 4;
++		base = (uint32_t *)ipu->tpmem_base + 0x2008 / 4;
+ 	} else if (ic_task == IC_TASK_VIEWFINDER) {
+ 		if (csc_index == 1)
+-			base = ipu->tpmem_base + 0x4028 / 4;
++			base = (uint32_t *)ipu->tpmem_base + 0x4028 / 4;
+ 		else
+-			base = ipu->tpmem_base + 0x4040 / 4;
++			base = (uint32_t *)ipu->tpmem_base + 0x4040 / 4;
+ 	} else if (ic_task == IC_TASK_POST_PROCESSOR) {
+ 		if (csc_index == 1)
+-			base = ipu->tpmem_base + 0x6060 / 4;
++			base = (uint32_t *)ipu->tpmem_base + 0x6060 / 4;
+ 		else
+-			base = ipu->tpmem_base + 0x6078 / 4;
++			base = (uint32_t *)ipu->tpmem_base + 0x6078 / 4;
+ 	} else {
+ 		BUG();
+ 	}
+diff --git a/drivers/mxc/ipu3/ipu_param_mem.h b/drivers/mxc/ipu3/ipu_param_mem.h
+index 2ff622b5..6c63123 100644
+--- a/drivers/mxc/ipu3/ipu_param_mem.h
++++ b/drivers/mxc/ipu3/ipu_param_mem.h
+@@ -280,6 +280,12 @@ static inline void _ipu_ch_param_init(struct ipu_soc *ipu, int ch,
+ 			 "IDMAC%d's EBA1 is not 8-byte aligned\n", ch);
+ 
+ 	switch (pixel_fmt) {
++        case IPU_PIX_FMT_GREY:
++                ipu_ch_param_set_field(&params, 0, 107, 3, 5); /* bits/pixel */
++                ipu_ch_param_set_field(&params, 1, 85, 4, 6);  /* pix format */
++                ipu_ch_param_set_field(&params, 1, 78, 7, 63); /* burst size */
++
++                break;
+ 	case IPU_PIX_FMT_GENERIC:
+ 		/*Represents 8-bit Generic data */
+ 		ipu_ch_param_set_field(&params, 0, 107, 3, 5);	/* bits/pixel */
+@@ -315,7 +321,8 @@ static inline void _ipu_ch_param_init(struct ipu_soc *ipu, int ch,
+ 	case IPU_PIX_FMT_YUV444:
+ 		ipu_ch_param_set_field(&params, 0, 107, 3, 1);	/* bits/pixel */
+ 		ipu_ch_param_set_field(&params, 1, 85, 4, 7);	/* pix format */
+-		ipu_ch_param_set_field(&params, 1, 78, 7, 19);	/* burst size */
++// MK		ipu_ch_param_set_field(&params, 1, 78, 7, 19);	/* burst size */
++		ipu_ch_param_set_field(&params, 1, 78, 7, 63);	/* burst size */
+ 
+ 		_ipu_ch_params_set_packing(&params, 8, 16, 8, 8, 8, 0, 8, 24);
+ 		break;
+@@ -704,6 +711,7 @@ static inline void _ipu_ch_offset_update(struct ipu_soc *ipu,
+ 
+ 	switch (pixel_fmt) {
+ 	case IPU_PIX_FMT_GENERIC:
++        case IPU_PIX_FMT_GREY:
+ 	case IPU_PIX_FMT_GENERIC_16:
+ 	case IPU_PIX_FMT_GENERIC_32:
+ 	case IPU_PIX_FMT_RGB565:
+diff --git a/drivers/mxc/ipu3/ipu_pixel_clk.c b/drivers/mxc/ipu3/ipu_pixel_clk.c
+index c1f6f7d..ddcf7f3 100644
+--- a/drivers/mxc/ipu3/ipu_pixel_clk.c
++++ b/drivers/mxc/ipu3/ipu_pixel_clk.c
+@@ -18,6 +18,7 @@
+  *
+  * @ingroup IPU
+  */
++//#define DEBUG
+ 
+ #include <linux/clk-provider.h>
+ #include <linux/err.h>
+diff --git a/drivers/mxc/ipu3/ipu_prv.h b/drivers/mxc/ipu3/ipu_prv.h
+index d12fc6e..0763398 100644
+--- a/drivers/mxc/ipu3/ipu_prv.h
++++ b/drivers/mxc/ipu3/ipu_prv.h
+@@ -80,20 +80,20 @@ struct ipu_soc {
+ 	struct ipu_irq_node irq_list[IPU_IRQ_COUNT];
+ 
+ 	/*reg*/
+-	u32 *cm_reg;
+-	u32 *idmac_reg;
+-	u32 *dp_reg;
+-	u32 *ic_reg;
+-	u32 *dc_reg;
+-	u32 *dc_tmpl_reg;
+-	u32 *dmfc_reg;
+-	u32 *di_reg[2];
+-	u32 *smfc_reg;
+-	u32 *csi_reg[2];
+-	u32 *cpmem_base;
+-	u32 *tpmem_base;
+-	u32 *disp_base[2];
+-	u32 *vdi_reg;
++	void __iomem *cm_reg;
++	void __iomem *idmac_reg;
++	void __iomem *dp_reg;
++	void __iomem *ic_reg;
++	void __iomem *dc_reg;
++	void __iomem *dc_tmpl_reg;
++	void __iomem *dmfc_reg;
++	void __iomem *di_reg[2];
++	void __iomem *smfc_reg;
++	void __iomem *csi_reg[2];
++	void __iomem *cpmem_base;
++	void __iomem *tpmem_base;
++	void __iomem *disp_base[2];
++	void __iomem *vdi_reg;
+ 
+ 	struct device *dev;
+ 
+diff --git a/drivers/mxc/ipu3/ipu_regs.h b/drivers/mxc/ipu3/ipu_regs.h
+index 94c587e..8a424ee 100644
+--- a/drivers/mxc/ipu3/ipu_regs.h
++++ b/drivers/mxc/ipu3/ipu_regs.h
+@@ -77,204 +77,225 @@ extern int g_ipu_hw_rev;
+ 
+ /* Register addresses */
+ /* IPU Common registers */
+-#define IPU_CONF		(0)
+-
+-#define IPU_SRM_PRI1		(0x00A0/4)
+-#define IPU_SRM_PRI2		(0x00A4/4)
+-#define IPU_FS_PROC_FLOW1	(0x00A8/4)
+-#define IPU_FS_PROC_FLOW2	(0x00AC/4)
+-#define IPU_FS_PROC_FLOW3	(0x00B0/4)
+-#define IPU_FS_DISP_FLOW1	(0x00B4/4)
+-#define IPU_FS_DISP_FLOW2	(0x00B8/4)
+-#define IPU_SKIP		(0x00BC/4)
+-#define IPU_DISP_ALT_CONF	(0x00C0/4)
+-#define IPU_DISP_GEN		(0x00C4/4)
+-#define IPU_DISP_ALT1		(0x00C8/4)
+-#define IPU_DISP_ALT2		(0x00CC/4)
+-#define IPU_DISP_ALT3		(0x00D0/4)
+-#define IPU_DISP_ALT4		(0x00D4/4)
+-#define IPU_SNOOP		(0x00D8/4)
+-#define IPU_MEM_RST		(0x00DC/4)
+-#define IPU_PM			(0x00E0/4)
+-#define IPU_GPR			(0x00E4/4)
+-#define IPU_CHA_DB_MODE_SEL(ch)	(0x0150/4 + (ch / 32))
+-#define IPU_ALT_CHA_DB_MODE_SEL(ch) (0x0168/4 + (ch / 32))
++#define IPU_CM_REG(offset)		(offset)
++
++#define IPU_CONF			IPU_CM_REG(0)
++#define IPU_SRM_PRI1			IPU_CM_REG(0x00A0)
++#define IPU_SRM_PRI2			IPU_CM_REG(0x00A4)
++#define IPU_FS_PROC_FLOW1		IPU_CM_REG(0x00A8)
++#define IPU_FS_PROC_FLOW2		IPU_CM_REG(0x00AC)
++#define IPU_FS_PROC_FLOW3		IPU_CM_REG(0x00B0)
++#define IPU_FS_DISP_FLOW1		IPU_CM_REG(0x00B4)
++#define IPU_FS_DISP_FLOW2		IPU_CM_REG(0x00B8)
++#define IPU_SKIP			IPU_CM_REG(0x00BC)
++#define IPU_DISP_ALT_CONF		IPU_CM_REG(0x00C0)
++#define IPU_DISP_GEN			IPU_CM_REG(0x00C4)
++#define IPU_DISP_ALT1			IPU_CM_REG(0x00C8)
++#define IPU_DISP_ALT2			IPU_CM_REG(0x00CC)
++#define IPU_DISP_ALT3			IPU_CM_REG(0x00D0)
++#define IPU_DISP_ALT4			IPU_CM_REG(0x00D4)
++#define IPU_SNOOP			IPU_CM_REG(0x00D8)
++#define IPU_MEM_RST			IPU_CM_REG(0x00DC)
++#define IPU_PM				IPU_CM_REG(0x00E0)
++#define IPU_GPR				IPU_CM_REG(0x00E4)
++#define IPU_CHA_DB_MODE_SEL(ch)		IPU_CM_REG(0x0150 + 4 * ((ch) / 32))
++#define IPU_ALT_CHA_DB_MODE_SEL(ch)	IPU_CM_REG(0x0168 + 4 * ((ch) / 32))
+ /*
+  * IPUv3D doesn't support triple buffer, so point
+  * IPU_CHA_TRB_MODE_SEL, IPU_CHA_TRIPLE_CUR_BUF and
+  * IPU_CHA_BUF2_RDY to readonly
+  * IPU_ALT_CUR_BUF0 for IPUv3D.
+  */
+-#define IPU_CHA_TRB_MODE_SEL(ch) ({g_ipu_hw_rev >= 2 ? \
+-				   (0x0178/4 + (ch / 32)) : \
+-				   (0x012C/4); })
+-#define IPU_CHA_TRIPLE_CUR_BUF(ch) ({g_ipu_hw_rev >= 2 ? \
+-				     (0x0258/4 + ((ch*2) / 32)) : \
+-				     (0x012C/4); })
+-#define IPU_CHA_BUF2_RDY(ch)	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0288/4 + (ch / 32)) : \
+-				  (0x012C/4); })
+-#define IPU_CHA_CUR_BUF(ch)	({g_ipu_hw_rev >= 2 ? \
+-				  (0x023C/4 + (ch / 32)) : \
+-				  (0x0124/4 + (ch / 32)); })
+-#define IPU_ALT_CUR_BUF0	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0244/4) : \
+-				  (0x012C/4); })
+-#define IPU_ALT_CUR_BUF1	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0248/4) : \
+-				  (0x0130/4); })
+-#define IPU_SRM_STAT		({g_ipu_hw_rev >= 2 ? \
+-				  (0x024C/4) : \
+-				  (0x0134/4); })
+-#define IPU_PROC_TASK_STAT	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0250/4) : \
+-				  (0x0138/4); })
+-#define IPU_DISP_TASK_STAT	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0254/4) : \
+-				  (0x013C/4); })
+-#define IPU_CHA_BUF0_RDY(ch)	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0268/4 + (ch / 32)) : \
+-				  (0x0140/4 + (ch / 32)); })
+-#define IPU_CHA_BUF1_RDY(ch)	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0270/4 + (ch / 32)) : \
+-				  (0x0148/4 + (ch / 32)); })
+-#define IPU_ALT_CHA_BUF0_RDY(ch) ({g_ipu_hw_rev >= 2 ? \
+-				   (0x0278/4 + (ch / 32)) : \
+-				   (0x0158/4 + (ch / 32)); })
+-#define IPU_ALT_CHA_BUF1_RDY(ch) ({g_ipu_hw_rev >= 2 ? \
+-				   (0x0280/4 + (ch / 32)) : \
+-				   (0x0160/4 + (ch / 32)); })
+-
+-#define IPU_INT_CTRL(n)		(0x003C/4 + ((n) - 1))
+-#define IPU_INT_CTRL_IRQ(irq)	IPU_INT_CTRL(((irq) / 32))
+-#define IPU_INT_STAT_IRQ(irq)	IPU_INT_STAT(((irq) / 32))
+-#define IPU_INT_STAT(n)		({g_ipu_hw_rev >= 2 ? \
+-				  (0x0200/4 + ((n) - 1)) : \
+-				  (0x00E8/4 + ((n) - 1)); })
+-
+-#define IPUIRQ_2_STATREG(irq)	(IPU_INT_STAT(1) + ((irq) / 32))
+-#define IPUIRQ_2_CTRLREG(irq)	(IPU_INT_CTRL(1) + ((irq) / 32))
++#define IPU_CHA_TRB_MODE_SEL(ch) IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0178 + 4 * ((ch) / 32)) : \
++					    (0x012C); })
++#define IPU_CHA_TRIPLE_CUR_BUF(ch) IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					      (0x0258 + \
++					       4 * (((ch) * 2) / 32)) : \
++					      (0x012C); })
++#define IPU_CHA_BUF2_RDY(ch)	IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0288 + 4 * ((ch) / 32)) : \
++					    (0x012C); })
++#define IPU_CHA_CUR_BUF(ch)	IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x023C + 4 * ((ch) / 32)) : \
++					    (0x0124 + 4 * ((ch) / 32)); })
++#define IPU_ALT_CUR_BUF0	IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0244) : \
++					    (0x012C); })
++#define IPU_ALT_CUR_BUF1	IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0248) : \
++					    (0x0130); })
++#define IPU_SRM_STAT		IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x024C) : \
++					    (0x0134); })
++#define IPU_PROC_TASK_STAT	IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0250) : \
++					    (0x0138); })
++#define IPU_DISP_TASK_STAT	IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0254) : \
++					    (0x013C); })
++#define IPU_CHA_BUF0_RDY(ch)	IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0268 + 4 * ((ch) / 32)) : \
++					    (0x0140 + 4 * ((ch) / 32)); })
++#define IPU_CHA_BUF1_RDY(ch)	IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0270 + 4 * ((ch) / 32)) : \
++					    (0x0148 + 4 * ((ch) / 32)); })
++#define IPU_ALT_CHA_BUF0_RDY(ch) IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					     (0x0278 + 4 * ((ch) / 32)) : \
++					     (0x0158 + 4 * ((ch) / 32)); })
++#define IPU_ALT_CHA_BUF1_RDY(ch) IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					     (0x0280 + 4 * ((ch) / 32)) : \
++					     (0x0160 + 4 * ((ch) / 32)); })
++
++#define IPU_INT_CTRL(n)		IPU_CM_REG(0x003C + 4 * ((n) - 1))
++#define IPU_INT_STAT(n)		IPU_CM_REG({g_ipu_hw_rev >= 2 ? \
++					    (0x0200 + 4 * ((n) - 1)) : \
++					    (0x00E8 + 4 * ((n) - 1)); })
++
++#define IPUIRQ_2_STATREG(irq)	IPU_CM_REG(IPU_INT_STAT(1) + 4 * ((irq) / 32))
++#define IPUIRQ_2_CTRLREG(irq)	IPU_CM_REG(IPU_INT_CTRL(1) + 4 * ((irq) / 32))
+ #define IPUIRQ_2_MASK(irq)	(1UL << ((irq) & 0x1F))
+ 
+-#define VDI_FSIZE (0)
+-#define VDI_C (0x0004/4)
+-
+-/* CMOS Sensor Interface Registers */
+-#define CSI_SENS_CONF		(0)
+-#define CSI_SENS_FRM_SIZE	(0x0004/4)
+-#define CSI_ACT_FRM_SIZE	(0x0008/4)
+-#define CSI_OUT_FRM_CTRL	(0x000C/4)
+-#define CSI_TST_CTRL		(0x0010/4)
+-#define CSI_CCIR_CODE_1		(0x0014/4)
+-#define CSI_CCIR_CODE_2		(0x0018/4)
+-#define CSI_CCIR_CODE_3		(0x001C/4)
+-#define CSI_MIPI_DI		(0x0020/4)
+-#define CSI_SKIP		(0x0024/4)
+-#define CSI_CPD_CTRL		(0x0028/4)
+-#define CSI_CPD_RC(n)		(0x002C/4 + n)
+-#define CSI_CPD_RS(n)		(0x004C/4 + n)
+-#define CSI_CPD_GRC(n)		(0x005C/4 + n)
+-#define CSI_CPD_GRS(n)		(0x007C/4 + n)
+-#define CSI_CPD_GBC(n)		(0x008C/4 + n)
+-#define CSI_CPD_GBS(n)		(0x00AC/4 + n)
+-#define CSI_CPD_BC(n)		(0x00BC/4 + n)
+-#define CSI_CPD_BS(n)		(0x00DC/4 + n)
+-#define CSI_CPD_OFFSET1		(0x00EC/4)
+-#define CSI_CPD_OFFSET2		(0x00F0/4)
+-
+-/*SMFC Registers */
+-#define SMFC_MAP	(0)
+-#define SMFC_WMC	(0x0004/4)
+-#define SMFC_BS		(0x0008/4)
+-
+-/* Image Converter Registers */
+-#define IC_CONF			0
+-#define IC_PRP_ENC_RSC		(0x0004/4)
+-#define IC_PRP_VF_RSC		(0x0008/4)
+-#define IC_PP_RSC		(0x000C/4)
+-#define IC_CMBP_1		(0x0010/4)
+-#define IC_CMBP_2		(0x0014/4)
+-#define IC_IDMAC_1		(0x0018/4)
+-#define IC_IDMAC_2		(0x001C/4)
+-#define IC_IDMAC_3		(0x0020/4)
+-#define IC_IDMAC_4		(0x0024/4)
+-
+-#define IDMAC_CONF		(0x0000)
+-#define IDMAC_CHA_EN(ch)	(0x0004/4 + (ch/32))
+-#define IDMAC_SEP_ALPHA		(0x000C/4)
+-#define IDMAC_ALT_SEP_ALPHA	(0x0010/4)
+-#define IDMAC_CHA_PRI(ch)	(0x0014/4 + (ch/32))
+-#define IDMAC_WM_EN(ch)		(0x001C/4 + (ch/32))
+-#define IDMAC_CH_LOCK_EN_1	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0024/4) : 0; })
+-#define IDMAC_CH_LOCK_EN_2	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0028/4) : \
+-				  (0x0024/4); })
+-#define IDMAC_SUB_ADDR_0	({g_ipu_hw_rev >= 2 ? \
+-				  (0x002C/4) : \
+-				  (0x0028/4); })
+-#define IDMAC_SUB_ADDR_1	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0030/4) : \
+-				  (0x002C/4); })
+-#define IDMAC_SUB_ADDR_2	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0034/4) : \
+-				  (0x0030/4); })
++/* IPU VDI registers */
++#define IPU_VDI_REG(offset)	(offset)
++
++#define VDI_FSIZE		IPU_VDI_REG(0)
++#define VDI_C			IPU_VDI_REG(0x0004)
++
++/* IPU CSI Registers */
++#define IPU_CSI_REG(offset)	(offset)
++
++#define CSI_SENS_CONF		IPU_CSI_REG(0)
++#define CSI_SENS_FRM_SIZE	IPU_CSI_REG(0x0004)
++#define CSI_ACT_FRM_SIZE	IPU_CSI_REG(0x0008)
++#define CSI_OUT_FRM_CTRL	IPU_CSI_REG(0x000C)
++#define CSI_TST_CTRL		IPU_CSI_REG(0x0010)
++#define CSI_CCIR_CODE_1		IPU_CSI_REG(0x0014)
++#define CSI_CCIR_CODE_2		IPU_CSI_REG(0x0018)
++#define CSI_CCIR_CODE_3		IPU_CSI_REG(0x001C)
++#define CSI_MIPI_DI		IPU_CSI_REG(0x0020)
++#define CSI_SKIP		IPU_CSI_REG(0x0024)
++#define CSI_CPD_CTRL		IPU_CSI_REG(0x0028)
++#define CSI_CPD_RC(n)		IPU_CSI_REG(0x002C + 4 * (n))
++#define CSI_CPD_RS(n)		IPU_CSI_REG(0x004C + 4 * (n))
++#define CSI_CPD_GRC(n)		IPU_CSI_REG(0x005C + 4 * (n))
++#define CSI_CPD_GRS(n)		IPU_CSI_REG(0x007C + 4 * (n))
++#define CSI_CPD_GBC(n)		IPU_CSI_REG(0x008C + 4 * (n))
++#define CSI_CPD_GBS(n)		IPU_CSI_REG(0x00AC + 4 * (n))
++#define CSI_CPD_BC(n)		IPU_CSI_REG(0x00BC + 4 * (n))
++#define CSI_CPD_BS(n)		IPU_CSI_REG(0x00DC + 4 * (n))
++#define CSI_CPD_OFFSET1		IPU_CSI_REG(0x00EC)
++#define CSI_CPD_OFFSET2		IPU_CSI_REG(0x00F0)
++
++/* IPU SMFC Registers */
++#define IPU_SMFC_REG(offset)	(offset)
++
++#define SMFC_MAP		IPU_SMFC_REG(0)
++#define SMFC_WMC		IPU_SMFC_REG(0x0004)
++#define SMFC_BS			IPU_SMFC_REG(0x0008)
++
++/* IPU IC Registers */
++#define IPU_IC_REG(offset)	(offset)
++
++#define IC_CONF			IPU_IC_REG(0)
++#define IC_PRP_ENC_RSC		IPU_IC_REG(0x0004)
++#define IC_PRP_VF_RSC		IPU_IC_REG(0x0008)
++#define IC_PP_RSC		IPU_IC_REG(0x000C)
++#define IC_CMBP_1		IPU_IC_REG(0x0010)
++#define IC_CMBP_2		IPU_IC_REG(0x0014)
++#define IC_IDMAC_1		IPU_IC_REG(0x0018)
++#define IC_IDMAC_2		IPU_IC_REG(0x001C)
++#define IC_IDMAC_3		IPU_IC_REG(0x0020)
++#define IC_IDMAC_4		IPU_IC_REG(0x0024)
++
++/* IPU IDMAC Registers */
++#define IPU_IDMAC_REG(offset)	(offset)
++
++#define IDMAC_CONF		IPU_IDMAC_REG(0x0000)
++#define IDMAC_CHA_EN(ch)	IPU_IDMAC_REG(0x0004 + 4 * ((ch) / 32))
++#define IDMAC_SEP_ALPHA		IPU_IDMAC_REG(0x000C)
++#define IDMAC_ALT_SEP_ALPHA	IPU_IDMAC_REG(0x0010)
++#define IDMAC_CHA_PRI(ch)	IPU_IDMAC_REG(0x0014 + 4 * ((ch) / 32))
++#define IDMAC_WM_EN(ch)		IPU_IDMAC_REG(0x001C + 4 * ((ch) / 32))
++#define IDMAC_CH_LOCK_EN_1	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x0024) : 0; })
++#define IDMAC_CH_LOCK_EN_2	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x0028) : \
++					       (0x0024); })
++#define IDMAC_SUB_ADDR_0	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x002C) : \
++					       (0x0028); })
++#define IDMAC_SUB_ADDR_1	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x0030) : \
++					       (0x002C); })
++#define IDMAC_SUB_ADDR_2	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x0034) : \
++					       (0x0030); })
+ /*
+  * IPUv3D doesn't support IDMAC_SUB_ADDR_3 and IDMAC_SUB_ADDR_4,
+  * so point them to readonly IDMAC_CHA_BUSY1 for IPUv3D.
+  */
+-#define IDMAC_SUB_ADDR_3	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0038/4) : \
+-				  (0x0040/4); })
+-#define IDMAC_SUB_ADDR_4	({g_ipu_hw_rev >= 2 ? \
+-				  (0x003c/4) : \
+-				  (0x0040/4); })
+-#define IDMAC_BAND_EN(ch)	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0040/4 + (ch/32)) : \
+-				  (0x0034/4 + (ch/32)); })
+-#define IDMAC_CHA_BUSY(ch)	({g_ipu_hw_rev >= 2 ? \
+-				  (0x0100/4 + (ch/32)) : \
+-				  (0x0040/4 + (ch/32)); })
+-
+-#define DI_GENERAL		(0)
+-#define DI_BS_CLKGEN0		(0x0004/4)
+-#define DI_BS_CLKGEN1		(0x0008/4)
+-
+-#define DI_SW_GEN0(gen)		(0x000C/4 + (gen - 1))
+-#define DI_SW_GEN1(gen)		(0x0030/4 + (gen - 1))
+-#define DI_STP_REP(gen)		(0x0148/4 + (gen - 1)/2)
+-#define DI_SYNC_AS_GEN		(0x0054/4)
+-#define DI_DW_GEN(gen)		(0x0058/4 + gen)
+-#define DI_DW_SET(gen, set)	(0x0088/4 + gen + 0xC*set)
+-#define DI_SER_CONF		(0x015C/4)
+-#define DI_SSC			(0x0160/4)
+-#define DI_POL			(0x0164/4)
+-#define DI_AW0			(0x0168/4)
+-#define DI_AW1			(0x016C/4)
+-#define DI_SCR_CONF		(0x0170/4)
+-#define DI_STAT			(0x0174/4)
+-
+-#define DMFC_RD_CHAN		(0)
+-#define DMFC_WR_CHAN		(0x0004/4)
+-#define DMFC_WR_CHAN_DEF	(0x0008/4)
+-#define DMFC_DP_CHAN		(0x000C/4)
+-#define DMFC_DP_CHAN_DEF	(0x0010/4)
+-#define DMFC_GENERAL1		(0x0014/4)
+-#define DMFC_GENERAL2		(0x0018/4)
+-#define DMFC_IC_CTRL		(0x001C/4)
+-#define DMFC_STAT		(0x0020/4)
+-
+-#define DC_MAP_CONF_PTR(n)	(0x0108/4 + n/2)
+-#define DC_MAP_CONF_VAL(n)	(0x0144/4 + n/2)
+-
+-#define _RL_CH_2_OFFSET(ch)	((ch == 0) ? 8 : ( \
+-				 (ch == 1) ? 0x24 : ( \
+-				 (ch == 2) ? 0x40 : ( \
+-				 (ch == 5) ? 0x64 : ( \
+-				 (ch == 6) ? 0x80 : ( \
+-				 (ch == 8) ? 0x9C : ( \
+-				 (ch == 9) ? 0xBC : (-1))))))))
+-#define DC_RL_CH(ch, evt)	(_RL_CH_2_OFFSET(ch)/4 + evt/2)
++#define IDMAC_SUB_ADDR_3	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x0038) : \
++					       (0x0040); })
++#define IDMAC_SUB_ADDR_4	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x003C) : \
++					       (0x0040); })
++#define IDMAC_BAND_EN(ch)	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x0040 + 4 * ((ch) / 32)) : \
++					       (0x0034 + 4 * ((ch) / 32)); })
++#define IDMAC_CHA_BUSY(ch)	IPU_IDMAC_REG({g_ipu_hw_rev >= 2 ? \
++					       (0x0100 + 4 * ((ch) / 32)) : \
++					       (0x0040 + 4 * ((ch) / 32)); })
++
++/* IPU DI Registers */
++#define IPU_DI_REG(offset)	(offset)
++
++#define DI_GENERAL		IPU_DI_REG(0)
++#define DI_BS_CLKGEN0		IPU_DI_REG(0x0004)
++#define DI_BS_CLKGEN1		IPU_DI_REG(0x0008)
++#define DI_SW_GEN0(gen)		IPU_DI_REG(0x000C + 4 * ((gen) - 1))
++#define DI_SW_GEN1(gen)		IPU_DI_REG(0x0030 + 4 * ((gen) - 1))
++#define DI_STP_REP(gen)		IPU_DI_REG(0x0148 + 4 * (((gen) - 1) / 2))
++#define DI_SYNC_AS_GEN		IPU_DI_REG(0x0054)
++#define DI_DW_GEN(gen)		IPU_DI_REG(0x0058 + 4 * (gen))
++#define DI_DW_SET(gen, set)	IPU_DI_REG(0x0088 + 4 * ((gen) + 0xC * (set)))
++#define DI_SER_CONF		IPU_DI_REG(0x015C)
++#define DI_SSC			IPU_DI_REG(0x0160)
++#define DI_POL			IPU_DI_REG(0x0164)
++#define DI_AW0			IPU_DI_REG(0x0168)
++#define DI_AW1			IPU_DI_REG(0x016C)
++#define DI_SCR_CONF		IPU_DI_REG(0x0170)
++#define DI_STAT			IPU_DI_REG(0x0174)
++
++/* IPU DMFC Registers */
++#define IPU_DMFC_REG(offset)	(offset)
++
++#define DMFC_RD_CHAN		IPU_DMFC_REG(0)
++#define DMFC_WR_CHAN		IPU_DMFC_REG(0x0004)
++#define DMFC_WR_CHAN_DEF	IPU_DMFC_REG(0x0008)
++#define DMFC_DP_CHAN		IPU_DMFC_REG(0x000C)
++#define DMFC_DP_CHAN_DEF	IPU_DMFC_REG(0x0010)
++#define DMFC_GENERAL1		IPU_DMFC_REG(0x0014)
++#define DMFC_GENERAL2		IPU_DMFC_REG(0x0018)
++#define DMFC_IC_CTRL		IPU_DMFC_REG(0x001C)
++#define DMFC_STAT		IPU_DMFC_REG(0x0020)
++
++/* IPU DC Registers */
++#define IPU_DC_REG(offset)	(offset)
++
++#define DC_MAP_CONF_PTR(n)	IPU_DC_REG(0x0108 + ((n) & ~0x1) * 2)
++#define DC_MAP_CONF_VAL(n)	IPU_DC_REG(0x0144 + ((n) & ~0x1) * 2)
++
++#define _RL_CH_2_OFFSET(ch)	(((ch) == 0) ? 8 : ( \
++				 ((ch) == 1) ? 0x24 : ( \
++				 ((ch) == 2) ? 0x40 : ( \
++				 ((ch) == 5) ? 0x64 : ( \
++				 ((ch) == 6) ? 0x80 : ( \
++				 ((ch) == 8) ? 0x9C : ( \
++				 ((ch) == 9) ? 0xBC : (-1))))))))
++#define DC_RL_CH(ch, evt)	IPU_DC_REG(_RL_CH_2_OFFSET(ch) + \
++					   ((evt) & ~0x1) * 2)
+ 
+ #define DC_EVT_NF		0
+ #define DC_EVT_NL		1
+@@ -313,36 +334,39 @@ extern int g_ipu_hw_rev;
+ 		0, 0x1C, 0x38, 0x54, 0x58, 0x5C, 0x78, 0, 0x94, 0xB4}; \
+ 	_offset[ch]; \
+ })
+-#define DC_WR_CH_CONF(ch)	(dc_ch_offset(ch)/4)
+-#define DC_WR_CH_ADDR(ch)	(dc_ch_offset(ch)/4 + 4/4)
+-
+-#define DC_WR_CH_CONF_1		(0x001C/4)
+-#define DC_WR_CH_ADDR_1		(0x0020/4)
+-#define DC_WR_CH_CONF_5		(0x005C/4)
+-#define DC_WR_CH_ADDR_5		(0x0060/4)
+-#define DC_GEN			(0x00D4/4)
+-#define DC_DISP_CONF1(disp)	(0x00D8/4 + disp)
+-#define DC_DISP_CONF2(disp)	(0x00E8/4 + disp)
+-#define DC_STAT			(0x01C8/4)
+-#define DC_UGDE_0(evt)		(0x0174/4 + evt*4)
+-#define DC_UGDE_1(evt)		(0x0178/4 + evt*4)
+-#define DC_UGDE_2(evt)		(0x017C/4 + evt*4)
+-#define DC_UGDE_3(evt)		(0x0180/4 + evt*4)
+-
+-#define DP_SYNC 0
+-#define DP_ASYNC0 0x60
+-#define DP_ASYNC1 0xBC
+-#define DP_COM_CONF(flow)	(flow/4)
+-#define DP_GRAPH_WIND_CTRL(flow) (0x0004/4 + flow/4)
+-#define DP_FG_POS(flow)		(0x0008/4 + flow/4)
+-#define DP_GAMMA_C(flow, i)	(0x0014/4 + flow/4 + i)
+-#define DP_GAMMA_S(flow, i)	(0x0034/4 + flow/4 + i)
+-#define DP_CSC_A_0(flow)	(0x0044/4 + flow/4)
+-#define DP_CSC_A_1(flow)	(0x0048/4 + flow/4)
+-#define DP_CSC_A_2(flow)	(0x004C/4 + flow/4)
+-#define DP_CSC_A_3(flow)	(0x0050/4 + flow/4)
+-#define DP_CSC_0(flow)		(0x0054/4 + flow/4)
+-#define DP_CSC_1(flow)		(0x0058/4 + flow/4)
++#define DC_WR_CH_CONF(ch)	IPU_DC_REG(dc_ch_offset(ch))
++#define DC_WR_CH_ADDR(ch)	IPU_DC_REG(dc_ch_offset(ch) + 4)
++
++#define DC_WR_CH_CONF_1		IPU_DC_REG(0x001C)
++#define DC_WR_CH_ADDR_1		IPU_DC_REG(0x0020)
++#define DC_WR_CH_CONF_5		IPU_DC_REG(0x005C)
++#define DC_WR_CH_ADDR_5		IPU_DC_REG(0x0060)
++#define DC_GEN			IPU_DC_REG(0x00D4)
++#define DC_DISP_CONF1(disp)	IPU_DC_REG(0x00D8 + 4 * (disp))
++#define DC_DISP_CONF2(disp)	IPU_DC_REG(0x00E8 + 4 * (disp))
++#define DC_STAT			IPU_DC_REG(0x01C8)
++#define DC_UGDE_0(evt)		IPU_DC_REG(0x0174 + 16 * (evt))
++#define DC_UGDE_1(evt)		IPU_DC_REG(0x0178 + 16 * (evt))
++#define DC_UGDE_2(evt)		IPU_DC_REG(0x017C + 16 * (evt))
++#define DC_UGDE_3(evt)		IPU_DC_REG(0x0180 + 16 * (evt))
++
++/* IPU DP Registers */
++#define IPU_DP_REG(offset)		(offset)
++
++#define DP_SYNC				0
++#define DP_ASYNC0			0x60
++#define DP_ASYNC1			0xBC
++#define DP_COM_CONF(flow)		IPU_DP_REG(flow)
++#define DP_GRAPH_WIND_CTRL(flow)	IPU_DP_REG(0x0004 + (flow))
++#define DP_FG_POS(flow)			IPU_DP_REG(0x0008 + (flow))
++#define DP_GAMMA_C(flow, i)		IPU_DP_REG(0x0014 + (flow) + 4 * (i))
++#define DP_GAMMA_S(flow, i)		IPU_DP_REG(0x0034 + (flow) + 4 * (i))
++#define DP_CSC_A_0(flow)		IPU_DP_REG(0x0044 + (flow))
++#define DP_CSC_A_1(flow)		IPU_DP_REG(0x0048 + (flow))
++#define DP_CSC_A_2(flow)		IPU_DP_REG(0x004C + (flow))
++#define DP_CSC_A_3(flow)		IPU_DP_REG(0x0050 + (flow))
++#define DP_CSC_0(flow)			IPU_DP_REG(0x0054 + (flow))
++#define DP_CSC_1(flow)			IPU_DP_REG(0x0058 + (flow))
+ 
+ enum {
+ 	IPU_CONF_CSI0_EN = 0x00000001,
+diff --git a/drivers/mxc/ipu3/vdoa.c b/drivers/mxc/ipu3/vdoa.c
+index c6cb9f1..a1f20a7 100644
+--- a/drivers/mxc/ipu3/vdoa.c
++++ b/drivers/mxc/ipu3/vdoa.c
+@@ -15,6 +15,8 @@
+  * with this program; if not, write to the Free Software Foundation, Inc.,
+  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+  */
++//#define DEBUG
++
+ #include <linux/clk.h>
+ #include <linux/err.h>
+ #include <linux/io.h>
+diff --git a/drivers/mxc/mipi/mxc_mipi_csi2.c b/drivers/mxc/mipi/mxc_mipi_csi2.c
+index 892ed35..6f3f4dd 100644
+--- a/drivers/mxc/mipi/mxc_mipi_csi2.c
++++ b/drivers/mxc/mipi/mxc_mipi_csi2.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (C) 2011-2013 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright (C) 2011-2014 Freescale Semiconductor, Inc. All Rights Reserved.
+  *
+  * This program is free software; you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License as published by
+@@ -15,6 +15,7 @@
+  * with this program; if not, write to the Free Software Foundation, Inc.,
+  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+  */
++#define DEBUG
+ 
+ #include <linux/module.h>
+ #include <linux/types.h>
+@@ -144,8 +145,8 @@ unsigned int mipi_csi2_set_lanes(struct mipi_csi2_info *info)
+ 	unsigned int lanes;
+ 
+ 	_mipi_csi2_lock(info);
+-	mipi_csi2_write(info, info->lanes - 1, CSI2_N_LANES);
+-	lanes = mipi_csi2_read(info, CSI2_N_LANES);
++	mipi_csi2_write(info, info->lanes - 1, MIPI_CSI2_N_LANES);
++	lanes = mipi_csi2_read(info, MIPI_CSI2_N_LANES);
+ 	_mipi_csi2_unlock(info);
+ 
+ 	return lanes;
+@@ -201,7 +202,7 @@ unsigned int mipi_csi2_dphy_status(struct mipi_csi2_info *info)
+ 	unsigned int status;
+ 
+ 	_mipi_csi2_lock(info);
+-	status = mipi_csi2_read(info, CSI2_PHY_STATE);
++	status = mipi_csi2_read(info, MIPI_CSI2_PHY_STATE);
+ 	_mipi_csi2_unlock(info);
+ 
+ 	return status;
+@@ -219,7 +220,7 @@ unsigned int mipi_csi2_get_error1(struct mipi_csi2_info *info)
+ 	unsigned int err1;
+ 
+ 	_mipi_csi2_lock(info);
+-	err1 = mipi_csi2_read(info, CSI2_ERR1);
++	err1 = mipi_csi2_read(info, MIPI_CSI2_ERR1);
+ 	_mipi_csi2_unlock(info);
+ 
+ 	return err1;
+@@ -237,7 +238,7 @@ unsigned int mipi_csi2_get_error2(struct mipi_csi2_info *info)
+ 	unsigned int err2;
+ 
+ 	_mipi_csi2_lock(info);
+-	err2 = mipi_csi2_read(info, CSI2_ERR2);
++	err2 = mipi_csi2_read(info, MIPI_CSI2_ERR2);
+ 	_mipi_csi2_unlock(info);
+ 
+ 	return err2;
+@@ -278,23 +279,23 @@ int mipi_csi2_reset(struct mipi_csi2_info *info)
+ {
+ 	_mipi_csi2_lock(info);
+ 
+-	mipi_csi2_write(info, 0x0, CSI2_PHY_SHUTDOWNZ);
+-	mipi_csi2_write(info, 0x0, CSI2_DPHY_RSTZ);
+-	mipi_csi2_write(info, 0x0, CSI2_RESETN);
++	mipi_csi2_write(info, 0x0, MIPI_CSI2_PHY_SHUTDOWNZ);
++	mipi_csi2_write(info, 0x0, MIPI_CSI2_DPHY_RSTZ);
++	mipi_csi2_write(info, 0x0, MIPI_CSI2_CSI2_RESETN);
+ 
+-	mipi_csi2_write(info, 0x00000001, CSI2_PHY_TST_CTRL0);
+-	mipi_csi2_write(info, 0x00000000, CSI2_PHY_TST_CTRL1);
+-	mipi_csi2_write(info, 0x00000000, CSI2_PHY_TST_CTRL0);
+-	mipi_csi2_write(info, 0x00000002, CSI2_PHY_TST_CTRL0);
+-	mipi_csi2_write(info, 0x00010044, CSI2_PHY_TST_CTRL1);
+-	mipi_csi2_write(info, 0x00000000, CSI2_PHY_TST_CTRL0);
+-	mipi_csi2_write(info, 0x00000014, CSI2_PHY_TST_CTRL1);
+-	mipi_csi2_write(info, 0x00000002, CSI2_PHY_TST_CTRL0);
+-	mipi_csi2_write(info, 0x00000000, CSI2_PHY_TST_CTRL0);
++	mipi_csi2_write(info, 0x00000001, MIPI_CSI2_PHY_TST_CTRL0);
++	mipi_csi2_write(info, 0x00000000, MIPI_CSI2_PHY_TST_CTRL1);
++	mipi_csi2_write(info, 0x00000000, MIPI_CSI2_PHY_TST_CTRL0);
++	mipi_csi2_write(info, 0x00000002, MIPI_CSI2_PHY_TST_CTRL0);
++	mipi_csi2_write(info, 0x00010044, MIPI_CSI2_PHY_TST_CTRL1);
++	mipi_csi2_write(info, 0x00000000, MIPI_CSI2_PHY_TST_CTRL0);
++	mipi_csi2_write(info, 0x00000014, MIPI_CSI2_PHY_TST_CTRL1);
++	mipi_csi2_write(info, 0x00000002, MIPI_CSI2_PHY_TST_CTRL0);
++	mipi_csi2_write(info, 0x00000000, MIPI_CSI2_PHY_TST_CTRL0);
+ 
+-	mipi_csi2_write(info, 0xffffffff, CSI2_PHY_SHUTDOWNZ);
+-	mipi_csi2_write(info, 0xffffffff, CSI2_DPHY_RSTZ);
+-	mipi_csi2_write(info, 0xffffffff, CSI2_RESETN);
++	mipi_csi2_write(info, 0xffffffff, MIPI_CSI2_PHY_SHUTDOWNZ);
++	mipi_csi2_write(info, 0xffffffff, MIPI_CSI2_DPHY_RSTZ);
++	mipi_csi2_write(info, 0xffffffff, MIPI_CSI2_CSI2_RESETN);
+ 
+ 	_mipi_csi2_unlock(info);
+ 
+@@ -458,13 +459,14 @@ static int mipi_csi2_probe(struct platform_device *pdev)
+ 	/* mipi dphy clk enable for register access */
+ 	clk_prepare_enable(gmipi_csi2->dphy_clk);
+ 	/* get mipi csi2 dphy version */
+-	mipi_csi2_dphy_ver = mipi_csi2_read(gmipi_csi2, CSI2_VERSION);
++	mipi_csi2_dphy_ver = mipi_csi2_read(gmipi_csi2, MIPI_CSI2_VERSION);
+ 
+ 	clk_disable_unprepare(gmipi_csi2->dphy_clk);
+ 
+ 	platform_set_drvdata(pdev, gmipi_csi2);
+ 
+-	dev_info(&pdev->dev, "i.MX MIPI CSI2 driver probed\n");
++	dev_info(&pdev->dev, "i.MX MIPI CSI2 driver probed, ipu %d, csi %d, vchannel %d and lanes %d.\n",
++                            gmipi_csi2->ipu_id, gmipi_csi2->csi_id, gmipi_csi2->v_channel, gmipi_csi2->lanes);
+ 	dev_info(&pdev->dev, "i.MX MIPI CSI2 dphy version is 0x%x\n",
+ 						mipi_csi2_dphy_ver);
+ 
+@@ -525,7 +527,3 @@ static void __exit mipi_csi2_cleanup(void)
+ 
+ subsys_initcall(mipi_csi2_init);
+ module_exit(mipi_csi2_cleanup);
+-
+-MODULE_AUTHOR("Freescale Semiconductor, Inc.");
+-MODULE_DESCRIPTION("i.MX MIPI CSI2 driver");
+-MODULE_LICENSE("GPL");
