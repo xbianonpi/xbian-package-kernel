@@ -1,3 +1,13 @@
+commit ccf72e04a04da74383e1843bf266a4e94941c6f9
+Author: Matus Kral <matuskral@me.com>
+Date:   Sun Nov 23 17:08:59 2014 +0100
+
+    hdmi_cec event struct change
+      (plan is to allow shared open mode on cecdev for concurent client access)
+    re-transmitting 5x in case of error indication on the line
+    reworked locking and process to avoid disrupts by hdmi interrupts
+      (or not to cause any)
+
 diff --git a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
 index 85e259c..304cc50 100644
 --- a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
