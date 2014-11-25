@@ -122,7 +122,7 @@ index e53510f..304cc50 100644
  	spin_unlock_irqrestore(&hdmi_cec->irq_lock, flags);
  
  	return ret;
-@@ -135,108 +118,107 @@ static irqreturn_t mxc_hdmi_cec_isr(int irq, void *data)
+@@ -135,108 +118,104 @@ static irqreturn_t mxc_hdmi_cec_isr(int irq, void *data)
  
  void mxc_hdmi_cec_handle(u16 cec_stat)
  {
@@ -287,7 +287,6 @@ index e53510f..304cc50 100644
 +	struct delayed_work *delay_work = to_delayed_work(work);
 +	struct hdmi_cec_priv *hdmi_cec =
 +		container_of(delay_work, struct hdmi_cec_priv, hdmi_cec_work);
-+	unsigned long flags;
 +
 +	pr_debug("function : %s\n", __func__);
 +	if (hdmi_cec->latest_cec_stat && open_count) {
@@ -313,9 +312,7 @@ index e53510f..304cc50 100644
 +	}
 +
  	val = HDMI_IH_CEC_STAT0_WAKEUP | HDMI_IH_CEC_STAT0_ERROR_FOLL | HDMI_IH_CEC_STAT0_ARB_LOST;
-+	spin_lock_irqsave(&hdmi_cec_data.irq_lock, flags);
  	hdmi_writeb(val, HDMI_IH_MUTE_CEC_STAT0);
-+	spin_unlock_irqrestore(&hdmi_cec_data.irq_lock, flags);
  }
  
  /*!
@@ -666,7 +663,8 @@ index e53510f..304cc50 100644
 -		status = copy_to_user((void __user *)arg,
 +		ret = copy_to_user((void __user *)arg,
  					 &hdmi_edid_cfg.physical_address,
- 					 4*sizeof(u8));
+-					 4*sizeof(u8));
++					 4*sizeof(u8))?-EFAULT:0;
 -		if (status)
 -			ret = -EFAULT;
  		break;

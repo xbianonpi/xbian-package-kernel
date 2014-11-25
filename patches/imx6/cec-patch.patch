@@ -662,7 +662,8 @@ index 85e259c..304cc50 100644
 -		status = copy_to_user((void __user *)arg,
 +		ret = copy_to_user((void __user *)arg,
  					 &hdmi_edid_cfg.physical_address,
- 					 4*sizeof(u8));
+-					 4*sizeof(u8));
++					 4*sizeof(u8))?-EFAULT:0;
 -		if (status)
 -			ret = -EFAULT;
  		break;
