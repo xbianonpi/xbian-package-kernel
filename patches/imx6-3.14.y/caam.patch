@@ -1,0 +1,4922 @@
+commit 8ebe78b056559e2a26c38186ed5d690b04c0c2bb
+Author: Matus Kral <matuskral@me.com>
+Date:   Wed Sep 24 03:32:19 2014 +0200
+
+    crypto/caam sources from 3.10.31
+
+diff --git a/drivers/crypto/caam/Kconfig b/drivers/crypto/caam/Kconfig
+index e7555ff..0df6f8c 100644
+--- a/drivers/crypto/caam/Kconfig
++++ b/drivers/crypto/caam/Kconfig
+@@ -1,32 +1,19 @@
+ config CRYPTO_DEV_FSL_CAAM
+ 	tristate "Freescale CAAM-Multicore driver backend"
+-	depends on FSL_SOC
++	depends on FSL_SOC || ARCH_MXC
+ 	help
+ 	  Enables the driver module for Freescale's Cryptographic Accelerator
+ 	  and Assurance Module (CAAM), also known as the SEC version 4 (SEC4).
+-	  This module creates job ring devices, and configures h/w
++	  This module adds a job ring operation interface, and configures h/w
+ 	  to operate as a DPAA component automatically, depending
+ 	  on h/w feature availability.
+ 
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called caam.
+ 
+-config CRYPTO_DEV_FSL_CAAM_JR
+-	tristate "Freescale CAAM Job Ring driver backend"
+-	depends on CRYPTO_DEV_FSL_CAAM
+-	default y
+-	help
+-	  Enables the driver module for Job Rings which are part of
+-	  Freescale's Cryptographic Accelerator
+-	  and Assurance Module (CAAM). This module adds a job ring operation
+-	  interface.
+-
+-	  To compile this driver as a module, choose M here: the module
+-	  will be called caam_jr.
+-
+ config CRYPTO_DEV_FSL_CAAM_RINGSIZE
+ 	int "Job Ring size"
+-	depends on CRYPTO_DEV_FSL_CAAM_JR
++	depends on CRYPTO_DEV_FSL_CAAM
+ 	range 2 9
+ 	default "9"
+ 	help
+@@ -44,7 +31,7 @@ config CRYPTO_DEV_FSL_CAAM_RINGSIZE
+ 
+ config CRYPTO_DEV_FSL_CAAM_INTC
+ 	bool "Job Ring interrupt coalescing"
+-	depends on CRYPTO_DEV_FSL_CAAM_JR
++	depends on CRYPTO_DEV_FSL_CAAM
+ 	default n
+ 	help
+ 	  Enable the Job Ring's interrupt coalescing feature.
+@@ -75,7 +62,7 @@ config CRYPTO_DEV_FSL_CAAM_INTC_TIME_THLD
+ 
+ config CRYPTO_DEV_FSL_CAAM_CRYPTO_API
+ 	tristate "Register algorithm implementations with the Crypto API"
+-	depends on CRYPTO_DEV_FSL_CAAM && CRYPTO_DEV_FSL_CAAM_JR
++	depends on CRYPTO_DEV_FSL_CAAM
+ 	default y
+ 	select CRYPTO_ALGAPI
+ 	select CRYPTO_AUTHENC
+@@ -89,7 +76,7 @@ config CRYPTO_DEV_FSL_CAAM_CRYPTO_API
+ 
+ config CRYPTO_DEV_FSL_CAAM_AHASH_API
+ 	tristate "Register hash algorithm implementations with Crypto API"
+-	depends on CRYPTO_DEV_FSL_CAAM && CRYPTO_DEV_FSL_CAAM_JR
++	depends on CRYPTO_DEV_FSL_CAAM
+ 	default y
+ 	select CRYPTO_HASH
+ 	help
+@@ -101,7 +88,7 @@ config CRYPTO_DEV_FSL_CAAM_AHASH_API
+ 
+ config CRYPTO_DEV_FSL_CAAM_RNG_API
+ 	tristate "Register caam device for hwrng API"
+-	depends on CRYPTO_DEV_FSL_CAAM && CRYPTO_DEV_FSL_CAAM_JR
++	depends on CRYPTO_DEV_FSL_CAAM
+ 	default y
+ 	select CRYPTO_RNG
+ 	select HW_RANDOM
+@@ -112,10 +99,50 @@ config CRYPTO_DEV_FSL_CAAM_RNG_API
+ 	  To compile this as a module, choose M here: the module
+ 	  will be called caamrng.
+ 
+-config CRYPTO_DEV_FSL_CAAM_DEBUG
+-	bool "Enable debug output in CAAM driver"
++config CRYPTO_DEV_FSL_CAAM_RNG_TEST
++	boolean "Test caam rng"
++	depends on CRYPTO_DEV_FSL_CAAM_RNG_API
++	default n
++	help
++	  Selecting this will enable self-test for caam rng.
++
++config CRYPTO_DEV_FSL_CAAM_SM
++	tristate "CAAM Secure Memory / Keystore API (EXPERIMENTAL)"
++	default n
++	help
++	  Enables use of a prototype kernel-level Keystore API with CAAM
++	  Secure Memory for insertion/extraction of bus-protected secrets.
++
++config CRYPTO_DEV_FSL_CAAM_SM_SLOTSIZE
++	int "Size of each keystore slot in Secure Memory"
++	depends on CRYPTO_DEV_FSL_CAAM_SM
++	range 5 9
++	default 7
++	help
++	  Select size of allocation units to divide Secure Memory pages into
++	  (the size of a "slot" as referenced inside the API code).
++	  Established as powers of two.
++	  Examples:
++		5 => 32 bytes
++		6 => 64 bytes
++		7 => 128 bytes
++		8 => 256 bytes
++		9 => 512 bytes
++
++config CRYPTO_DEV_FSL_CAAM_SM_TEST
++	tristate "CAAM Secure Memory - Keystore Test/Example (EXPERIMENTAL)"
++	depends on CRYPTO_DEV_FSL_CAAM_SM
++	default n
++	help
++	  Example thread to exercise the Keystore API and to verify that
++	  stored and recovered secrets can be used for general purpose
++	  encryption/decryption.
++
++config CRYPTO_DEV_FSL_CAAM_SECVIO
++	tristate "CAAM/SNVS Security Violation Handler (EXPERIMENTAL)"
+ 	depends on CRYPTO_DEV_FSL_CAAM
+ 	default n
+ 	help
+-	  Selecting this will enable printing of various debug
+-	  information in the CAAM driver.
++	  Enables installation of an interrupt handler with registrable
++          handler functions which can be specified to act on the consequences
++          of a security violation.
+diff --git a/drivers/crypto/caam/Makefile b/drivers/crypto/caam/Makefile
+index 550758a..2141ac4 100644
+--- a/drivers/crypto/caam/Makefile
++++ b/drivers/crypto/caam/Makefile
+@@ -1,15 +1,13 @@
+ #
+ # Makefile for the CAAM backend and dependent components
+ #
+-ifeq ($(CONFIG_CRYPTO_DEV_FSL_CAAM_DEBUG), y)
+-	EXTRA_CFLAGS := -DDEBUG
+-endif
+ 
+ obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM) += caam.o
+-obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_JR) += caam_jr.o
+ obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_CRYPTO_API) += caamalg.o
+ obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_AHASH_API) += caamhash.o
+ obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_RNG_API) += caamrng.o
++obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_SM) += sm_store.o
++obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_SM_TEST) += sm_test.o
++obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_SECVIO) += secvio.o
+ 
+-caam-objs := ctrl.o
+-caam_jr-objs := jr.o key_gen.o error.o
++caam-objs := ctrl.o jr.o error.o key_gen.o
+diff --git a/drivers/crypto/caam/caamalg.c b/drivers/crypto/caam/caamalg.c
+index b71f2fd..b7ed105 100644
+--- a/drivers/crypto/caam/caamalg.c
++++ b/drivers/crypto/caam/caamalg.c
+@@ -1,7 +1,7 @@
+ /*
+  * caam - Freescale FSL CAAM support for crypto API
+  *
+- * Copyright 2008-2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  *
+  * Based on talitos crypto API driver.
+  *
+@@ -53,6 +53,7 @@
+ #include "error.h"
+ #include "sg_sw_sec4.h"
+ #include "key_gen.h"
++#include <linux/string.h>
+ 
+ /*
+  * crypto alg
+@@ -65,6 +66,8 @@
+ #define CAAM_MAX_IV_LENGTH		16
+ 
+ /* length of descriptors text */
++#define DESC_JOB_IO_LEN			(CAAM_CMD_SZ * 5 + CAAM_PTR_SZ * 3)
++
+ #define DESC_AEAD_BASE			(4 * CAAM_CMD_SZ)
+ #define DESC_AEAD_ENC_LEN		(DESC_AEAD_BASE + 16 * CAAM_CMD_SZ)
+ #define DESC_AEAD_DEC_LEN		(DESC_AEAD_BASE + 21 * CAAM_CMD_SZ)
+@@ -82,11 +85,12 @@
+ 
+ #ifdef DEBUG
+ /* for print_hex_dumps with line references */
++#define xstr(s) str(s)
++#define str(s) #s
+ #define debug(format, arg...) printk(format, arg)
+ #else
+ #define debug(format, arg...)
+ #endif
+-static struct list_head alg_list;
+ 
+ /* Set DK bit in class 1 operation if shared */
+ static inline void append_dec_op1(u32 *desc, u32 type)
+@@ -282,11 +286,13 @@ static int aead_set_sh_desc(struct crypto_aead *aead)
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "aead enc shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "aead enc shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 		       desc_bytes(desc), 1);
+ #endif
+ 
++	dma_sync_single_for_cpu(jrdev, ctx->sh_desc_enc_dma, desc_bytes(desc),
++				DMA_TO_DEVICE);
+ 	/*
+ 	 * Job Descriptor and Shared Descriptors
+ 	 * must all fit into the 64-word Descriptor h/w Buffer
+@@ -350,10 +356,12 @@ static int aead_set_sh_desc(struct crypto_aead *aead)
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "aead dec shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "aead dec shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 		       desc_bytes(desc), 1);
+ #endif
++	dma_sync_single_for_cpu(jrdev, ctx->sh_desc_dec_dma, desc_bytes(desc),
++				DMA_TO_DEVICE);
+ 
+ 	/*
+ 	 * Job Descriptor and Shared Descriptors
+@@ -433,10 +441,12 @@ static int aead_set_sh_desc(struct crypto_aead *aead)
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "aead givenc shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "aead givenc shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 		       desc_bytes(desc), 1);
+ #endif
++	dma_sync_single_for_cpu(jrdev, ctx->sh_desc_givenc_dma,
++				desc_bytes(desc), DMA_TO_DEVICE);
+ 
+ 	return 0;
+ }
+@@ -467,10 +477,24 @@ static int aead_setkey(struct crypto_aead *aead,
+ 	static const u8 mdpadlen[] = { 16, 20, 32, 32, 64, 64 };
+ 	struct caam_ctx *ctx = crypto_aead_ctx(aead);
+ 	struct device *jrdev = ctx->jrdev;
+-	struct crypto_authenc_keys keys;
++	struct rtattr *rta = (void *)key;
++	struct crypto_authenc_key_param *param;
++	unsigned int authkeylen;
++	unsigned int enckeylen;
+ 	int ret = 0;
+ 
+-	if (crypto_authenc_extractkeys(&keys, key, keylen) != 0)
++	param = RTA_DATA(rta);
++	enckeylen = be32_to_cpu(param->enckeylen);
++
++	key += RTA_ALIGN(rta->rta_len);
++	keylen -= RTA_ALIGN(rta->rta_len);
++
++	if (keylen < enckeylen)
++		goto badkey;
++
++	authkeylen = keylen - enckeylen;
++
++	if (keylen > CAAM_MAX_KEY_SIZE)
+ 		goto badkey;
+ 
+ 	/* Pick class 2 key length from algorithm submask */
+@@ -478,45 +502,44 @@ static int aead_setkey(struct crypto_aead *aead,
+ 				      OP_ALG_ALGSEL_SHIFT] * 2;
+ 	ctx->split_key_pad_len = ALIGN(ctx->split_key_len, 16);
+ 
+-	if (ctx->split_key_pad_len + keys.enckeylen > CAAM_MAX_KEY_SIZE)
+-		goto badkey;
+-
+ #ifdef DEBUG
+ 	printk(KERN_ERR "keylen %d enckeylen %d authkeylen %d\n",
+-	       keys.authkeylen + keys.enckeylen, keys.enckeylen,
+-	       keys.authkeylen);
++	       keylen, enckeylen, authkeylen);
+ 	printk(KERN_ERR "split_key_len %d split_key_pad_len %d\n",
+ 	       ctx->split_key_len, ctx->split_key_pad_len);
+-	print_hex_dump(KERN_ERR, "key in @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "key in @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, key, keylen, 1);
+ #endif
+ 
+-	ret = gen_split_aead_key(ctx, keys.authkey, keys.authkeylen);
++	ret = gen_split_aead_key(ctx, key, authkeylen);
+ 	if (ret) {
+ 		goto badkey;
+ 	}
+ 
+ 	/* postpend encryption key to auth split key */
+-	memcpy(ctx->key + ctx->split_key_pad_len, keys.enckey, keys.enckeylen);
++	memcpy(ctx->key + ctx->split_key_pad_len, key + authkeylen, enckeylen);
+ 
+ 	ctx->key_dma = dma_map_single(jrdev, ctx->key, ctx->split_key_pad_len +
+-				      keys.enckeylen, DMA_TO_DEVICE);
++				       enckeylen, DMA_TO_DEVICE);
+ 	if (dma_mapping_error(jrdev, ctx->key_dma)) {
+ 		dev_err(jrdev, "unable to map key i/o memory\n");
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ctx.key@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ctx.key@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, ctx->key,
+-		       ctx->split_key_pad_len + keys.enckeylen, 1);
++		       ctx->split_key_pad_len + enckeylen, 1);
+ #endif
++	dma_sync_single_for_device(jrdev, ctx->key_dma,
++				   ctx->split_key_pad_len + enckeylen,
++				   DMA_TO_DEVICE);
+ 
+-	ctx->enckeylen = keys.enckeylen;
++	ctx->enckeylen = enckeylen;
+ 
+ 	ret = aead_set_sh_desc(aead);
+ 	if (ret) {
+ 		dma_unmap_single(jrdev, ctx->key_dma, ctx->split_key_pad_len +
+-				 keys.enckeylen, DMA_TO_DEVICE);
++				 enckeylen, DMA_TO_DEVICE);
+ 	}
+ 
+ 	return ret;
+@@ -536,7 +559,7 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
+ 	u32 *desc;
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "key in @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "key in @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, key, keylen, 1);
+ #endif
+ 
+@@ -548,6 +571,7 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
+ 		return -ENOMEM;
+ 	}
+ 	ctx->enckeylen = keylen;
++	dma_sync_single_for_device(jrdev, ctx->key_dma, keylen, DMA_TO_DEVICE);
+ 
+ 	/* ablkcipher_encrypt shared descriptor */
+ 	desc = ctx->sh_desc_enc;
+@@ -566,10 +590,15 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
+ 	/* Propagate errors from shared to job descriptor */
+ 	append_cmd(desc, SET_OK_NO_PROP_ERRORS | CMD_LOAD);
+ 
+-	/* Load iv */
+-	append_cmd(desc, CMD_SEQ_LOAD | LDST_SRCDST_BYTE_CONTEXT |
+-		   LDST_CLASS_1_CCB | tfm->ivsize);
+-
++	/* load IV */
++	if (strncmp(ablkcipher->base.__crt_alg->cra_name, "ctr(aes)", 8) == 0) {
++		append_cmd(desc, CMD_SEQ_LOAD | LDST_SRCDST_BYTE_CONTEXT |
++			LDST_CLASS_1_CCB | tfm->ivsize |
++			(16 << LDST_OFFSET_SHIFT));
++	} else {
++		append_cmd(desc, CMD_SEQ_LOAD | LDST_SRCDST_BYTE_CONTEXT |
++				    LDST_CLASS_1_CCB | tfm->ivsize);
++	}
+ 	/* Load operation */
+ 	append_operation(desc, ctx->class1_alg_type |
+ 			 OP_ALG_AS_INITFINAL | OP_ALG_ENCRYPT);
+@@ -585,11 +614,13 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR,
+-		       "ablkcipher enc shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ablkcipher enc shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 		       desc_bytes(desc), 1);
+ #endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_enc_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
++
+ 	/* ablkcipher_decrypt shared descriptor */
+ 	desc = ctx->sh_desc_dec;
+ 
+@@ -610,11 +641,20 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
+ 	set_jump_tgt_here(desc, jump_cmd);
+ 
+ 	/* load IV */
+-	append_cmd(desc, CMD_SEQ_LOAD | LDST_SRCDST_BYTE_CONTEXT |
+-		   LDST_CLASS_1_CCB | tfm->ivsize);
++	if (strncmp(ablkcipher->base.__crt_alg->cra_name, "ctr(aes)", 8) == 0) {
++		append_cmd(desc, CMD_SEQ_LOAD | LDST_SRCDST_BYTE_CONTEXT |
++			LDST_CLASS_1_CCB | tfm->ivsize |
++			(16 << LDST_OFFSET_SHIFT));
+ 
+-	/* Choose operation */
+-	append_dec_op1(desc, ctx->class1_alg_type);
++		append_operation(desc, ctx->class1_alg_type |
++			OP_ALG_AS_INITFINAL | OP_ALG_DECRYPT);
++	} else {
++		append_cmd(desc, CMD_SEQ_LOAD | LDST_SRCDST_BYTE_CONTEXT |
++				    LDST_CLASS_1_CCB | tfm->ivsize);
++
++		/* Choose operation */
++		append_dec_op1(desc, ctx->class1_alg_type);
++	}
+ 
+ 	/* Perform operation */
+ 	ablkcipher_append_src_dst(desc);
+@@ -631,11 +671,12 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
+ 	}
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR,
+-		       "ablkcipher dec shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ablkcipher dec shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 		       desc_bytes(desc), 1);
+ #endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_dec_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
+ 
+ 	return ret;
+ }
+@@ -769,13 +810,13 @@ static void aead_encrypt_done(struct device *jrdev, u32 *desc, u32 err,
+ 	aead_unmap(jrdev, edesc, req);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "assoc  @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "assoc  @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->assoc),
+ 		       req->assoclen , 1);
+-	print_hex_dump(KERN_ERR, "dstiv  @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dstiv  @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src) - ivsize,
+ 		       edesc->src_nents ? 100 : ivsize, 1);
+-	print_hex_dump(KERN_ERR, "dst    @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dst    @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src),
+ 		       edesc->src_nents ? 100 : req->cryptlen +
+ 		       ctx->authsize + 4, 1);
+@@ -803,12 +844,12 @@ static void aead_decrypt_done(struct device *jrdev, u32 *desc, u32 err,
+ 		 offsetof(struct aead_edesc, hw_desc));
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "dstiv  @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dstiv  @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, req->iv,
+ 		       ivsize, 1);
+-	print_hex_dump(KERN_ERR, "dst    @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dst    @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->dst),
+-		       req->cryptlen - ctx->authsize, 1);
++		       req->cryptlen, 1);
+ #endif
+ 
+ 	if (err) {
+@@ -826,7 +867,7 @@ static void aead_decrypt_done(struct device *jrdev, u32 *desc, u32 err,
+ 		err = -EBADMSG;
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "iphdrout@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "iphdrout@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4,
+ 		       ((char *)sg_virt(req->assoc) - sizeof(struct iphdr)),
+ 		       sizeof(struct iphdr) + req->assoclen +
+@@ -834,7 +875,7 @@ static void aead_decrypt_done(struct device *jrdev, u32 *desc, u32 err,
+ 		       ctx->authsize + 36, 1);
+ 	if (!err && edesc->sec4_sg_bytes) {
+ 		struct scatterlist *sg = sg_last(req->src, edesc->src_nents);
+-		print_hex_dump(KERN_ERR, "sglastout@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "sglastout@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(sg),
+ 			sg->length + ctx->authsize + 16, 1);
+ 	}
+@@ -867,10 +908,10 @@ static void ablkcipher_encrypt_done(struct device *jrdev, u32 *desc, u32 err,
+ 	}
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "dstiv  @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dstiv  @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, req->info,
+ 		       edesc->src_nents > 1 ? 100 : ivsize, 1);
+-	print_hex_dump(KERN_ERR, "dst    @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dst    @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src),
+ 		       edesc->dst_nents > 1 ? 100 : req->nbytes, 1);
+ #endif
+@@ -902,10 +943,10 @@ static void ablkcipher_decrypt_done(struct device *jrdev, u32 *desc, u32 err,
+ 	}
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "dstiv  @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dstiv  @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, req->info,
+ 		       ivsize, 1);
+-	print_hex_dump(KERN_ERR, "dst    @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dst    @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src),
+ 		       edesc->dst_nents > 1 ? 100 : req->nbytes, 1);
+ #endif
+@@ -936,16 +977,16 @@ static void init_aead_job(u32 *sh_desc, dma_addr_t ptr,
+ #ifdef DEBUG
+ 	debug("assoclen %d cryptlen %d authsize %d\n",
+ 	      req->assoclen, req->cryptlen, authsize);
+-	print_hex_dump(KERN_ERR, "assoc  @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "assoc  @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->assoc),
+ 		       req->assoclen , 1);
+-	print_hex_dump(KERN_ERR, "presciv@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "presciv@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, req->iv,
+ 		       edesc->src_nents ? 100 : ivsize, 1);
+-	print_hex_dump(KERN_ERR, "src    @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "src    @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src),
+ 			edesc->src_nents ? 100 : req->cryptlen, 1);
+-	print_hex_dump(KERN_ERR, "shrdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "shrdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sh_desc,
+ 		       desc_bytes(sh_desc), 1);
+ #endif
+@@ -962,9 +1003,12 @@ static void init_aead_job(u32 *sh_desc, dma_addr_t ptr,
+ 				 (edesc->src_nents ? : 1);
+ 		in_options = LDST_SGF;
+ 	}
+-
+-	append_seq_in_ptr(desc, src_dma, req->assoclen + ivsize + req->cryptlen,
+-			  in_options);
++	if (encrypt)
++		append_seq_in_ptr(desc, src_dma, req->assoclen + ivsize +
++				  req->cryptlen - authsize, in_options);
++	else
++		append_seq_in_ptr(desc, src_dma, req->assoclen + ivsize +
++				  req->cryptlen, in_options);
+ 
+ 	if (likely(req->src == req->dst)) {
+ 		if (all_contig) {
+@@ -985,8 +1029,7 @@ static void init_aead_job(u32 *sh_desc, dma_addr_t ptr,
+ 		}
+ 	}
+ 	if (encrypt)
+-		append_seq_out_ptr(desc, dst_dma, req->cryptlen + authsize,
+-				   out_options);
++		append_seq_out_ptr(desc, dst_dma, req->cryptlen, out_options);
+ 	else
+ 		append_seq_out_ptr(desc, dst_dma, req->cryptlen - authsize,
+ 				   out_options);
+@@ -1012,15 +1055,15 @@ static void init_aead_giv_job(u32 *sh_desc, dma_addr_t ptr,
+ #ifdef DEBUG
+ 	debug("assoclen %d cryptlen %d authsize %d\n",
+ 	      req->assoclen, req->cryptlen, authsize);
+-	print_hex_dump(KERN_ERR, "assoc  @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "assoc  @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->assoc),
+ 		       req->assoclen , 1);
+-	print_hex_dump(KERN_ERR, "presciv@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "presciv@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, req->iv, ivsize, 1);
+-	print_hex_dump(KERN_ERR, "src    @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "src    @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src),
+ 			edesc->src_nents > 1 ? 100 : req->cryptlen, 1);
+-	print_hex_dump(KERN_ERR, "shrdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "shrdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sh_desc,
+ 		       desc_bytes(sh_desc), 1);
+ #endif
+@@ -1036,8 +1079,8 @@ static void init_aead_giv_job(u32 *sh_desc, dma_addr_t ptr,
+ 		sec4_sg_index += edesc->assoc_nents + 1 + edesc->src_nents;
+ 		in_options = LDST_SGF;
+ 	}
+-	append_seq_in_ptr(desc, src_dma, req->assoclen + ivsize + req->cryptlen,
+-			  in_options);
++	append_seq_in_ptr(desc, src_dma, req->assoclen + ivsize +
++			  req->cryptlen - authsize, in_options);
+ 
+ 	if (contig & GIV_DST_CONTIG) {
+ 		dst_dma = edesc->iv_dma;
+@@ -1054,8 +1097,7 @@ static void init_aead_giv_job(u32 *sh_desc, dma_addr_t ptr,
+ 		}
+ 	}
+ 
+-	append_seq_out_ptr(desc, dst_dma, ivsize + req->cryptlen + authsize,
+-			   out_options);
++	append_seq_out_ptr(desc, dst_dma, ivsize + req->cryptlen, out_options);
+ }
+ 
+ /*
+@@ -1074,10 +1116,10 @@ static void init_ablkcipher_job(u32 *sh_desc, dma_addr_t ptr,
+ 	int len, sec4_sg_index = 0;
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "presciv@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "presciv@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, req->info,
+ 		       ivsize, 1);
+-	print_hex_dump(KERN_ERR, "src    @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "src    @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src),
+ 		       edesc->src_nents ? 100 : req->nbytes, 1);
+ #endif
+@@ -1119,8 +1161,7 @@ static void init_ablkcipher_job(u32 *sh_desc, dma_addr_t ptr,
+  * allocate and map the aead extended descriptor
+  */
+ static struct aead_edesc *aead_edesc_alloc(struct aead_request *req,
+-					   int desc_bytes, bool *all_contig_ptr,
+-					   bool encrypt)
++					   int desc_bytes, bool *all_contig_ptr)
+ {
+ 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
+ 	struct caam_ctx *ctx = crypto_aead_ctx(aead);
+@@ -1135,25 +1176,15 @@ static struct aead_edesc *aead_edesc_alloc(struct aead_request *req,
+ 	bool assoc_chained = false, src_chained = false, dst_chained = false;
+ 	int ivsize = crypto_aead_ivsize(aead);
+ 	int sec4_sg_index, sec4_sg_len = 0, sec4_sg_bytes;
+-	unsigned int authsize = ctx->authsize;
+ 
+ 	assoc_nents = sg_count(req->assoc, req->assoclen, &assoc_chained);
++	src_nents = sg_count(req->src, req->cryptlen, &src_chained);
+ 
+-	if (unlikely(req->dst != req->src)) {
+-		src_nents = sg_count(req->src, req->cryptlen, &src_chained);
+-		dst_nents = sg_count(req->dst,
+-				     req->cryptlen +
+-					(encrypt ? authsize : (-authsize)),
+-				     &dst_chained);
+-	} else {
+-		src_nents = sg_count(req->src,
+-				     req->cryptlen +
+-					(encrypt ? authsize : 0),
+-				     &src_chained);
+-	}
++	if (unlikely(req->dst != req->src))
++		dst_nents = sg_count(req->dst, req->cryptlen, &dst_chained);
+ 
+ 	sgc = dma_map_sg_chained(jrdev, req->assoc, assoc_nents ? : 1,
+-				 DMA_TO_DEVICE, assoc_chained);
++				 DMA_BIDIRECTIONAL, assoc_chained);
+ 	if (likely(req->src == req->dst)) {
+ 		sgc = dma_map_sg_chained(jrdev, req->src, src_nents ? : 1,
+ 					 DMA_BIDIRECTIONAL, src_chained);
+@@ -1177,9 +1208,10 @@ static struct aead_edesc *aead_edesc_alloc(struct aead_request *req,
+ 	sec4_sg_len += dst_nents;
+ 
+ 	sec4_sg_bytes = sec4_sg_len * sizeof(struct sec4_sg_entry);
++	dma_sync_single_for_device(jrdev, iv_dma, ivsize, DMA_TO_DEVICE);
+ 
+ 	/* allocate space for base edesc and hw desc commands, link tables */
+-	edesc = kmalloc(sizeof(struct aead_edesc) + desc_bytes +
++	edesc = kzalloc(sizeof(struct aead_edesc) + desc_bytes +
+ 			sec4_sg_bytes, GFP_DMA | flags);
+ 	if (!edesc) {
+ 		dev_err(jrdev, "could not allocate extended descriptor\n");
+@@ -1220,6 +1252,8 @@ static struct aead_edesc *aead_edesc_alloc(struct aead_request *req,
+ 		sg_to_sec4_sg_last(req->dst, dst_nents,
+ 				   edesc->sec4_sg + sec4_sg_index, 0);
+ 	}
++	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
++				   DMA_TO_DEVICE);
+ 
+ 	return edesc;
+ }
+@@ -1234,9 +1268,11 @@ static int aead_encrypt(struct aead_request *req)
+ 	u32 *desc;
+ 	int ret = 0;
+ 
++	req->cryptlen += ctx->authsize;
++
+ 	/* allocate extended descriptor */
+ 	edesc = aead_edesc_alloc(req, DESC_JOB_IO_LEN *
+-				 CAAM_CMD_SZ, &all_contig, true);
++				 CAAM_CMD_SZ, &all_contig);
+ 	if (IS_ERR(edesc))
+ 		return PTR_ERR(edesc);
+ 
+@@ -1244,7 +1280,7 @@ static int aead_encrypt(struct aead_request *req)
+ 	init_aead_job(ctx->sh_desc_enc, ctx->sh_desc_enc_dma, edesc, req,
+ 		      all_contig, true);
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "aead jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "aead jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, edesc->hw_desc,
+ 		       desc_bytes(edesc->hw_desc), 1);
+ #endif
+@@ -1273,12 +1309,12 @@ static int aead_decrypt(struct aead_request *req)
+ 
+ 	/* allocate extended descriptor */
+ 	edesc = aead_edesc_alloc(req, DESC_JOB_IO_LEN *
+-				 CAAM_CMD_SZ, &all_contig, false);
++				 CAAM_CMD_SZ, &all_contig);
+ 	if (IS_ERR(edesc))
+ 		return PTR_ERR(edesc);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "dec src@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "dec src@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src),
+ 		       req->cryptlen, 1);
+ #endif
+@@ -1287,7 +1323,7 @@ static int aead_decrypt(struct aead_request *req)
+ 	init_aead_job(ctx->sh_desc_dec,
+ 		      ctx->sh_desc_dec_dma, edesc, req, all_contig, false);
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "aead jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "aead jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, edesc->hw_desc,
+ 		       desc_bytes(edesc->hw_desc), 1);
+ #endif
+@@ -1330,11 +1366,10 @@ static struct aead_edesc *aead_giv_edesc_alloc(struct aead_givcrypt_request
+ 	src_nents = sg_count(req->src, req->cryptlen, &src_chained);
+ 
+ 	if (unlikely(req->dst != req->src))
+-		dst_nents = sg_count(req->dst, req->cryptlen + ctx->authsize,
+-				     &dst_chained);
++		dst_nents = sg_count(req->dst, req->cryptlen, &dst_chained);
+ 
+ 	sgc = dma_map_sg_chained(jrdev, req->assoc, assoc_nents ? : 1,
+-				 DMA_TO_DEVICE, assoc_chained);
++				 DMA_BIDIRECTIONAL, assoc_chained);
+ 	if (likely(req->src == req->dst)) {
+ 		sgc = dma_map_sg_chained(jrdev, req->src, src_nents ? : 1,
+ 					 DMA_BIDIRECTIONAL, src_chained);
+@@ -1367,8 +1402,10 @@ static struct aead_edesc *aead_giv_edesc_alloc(struct aead_givcrypt_request
+ 
+ 	sec4_sg_bytes = sec4_sg_len * sizeof(struct sec4_sg_entry);
+ 
++	dma_sync_single_for_device(jrdev, iv_dma, ivsize, DMA_TO_DEVICE);
++
+ 	/* allocate space for base edesc and hw desc commands, link tables */
+-	edesc = kmalloc(sizeof(struct aead_edesc) + desc_bytes +
++	edesc = kzalloc(sizeof(struct aead_edesc) + desc_bytes +
+ 			sec4_sg_bytes, GFP_DMA | flags);
+ 	if (!edesc) {
+ 		dev_err(jrdev, "could not allocate extended descriptor\n");
+@@ -1410,6 +1447,8 @@ static struct aead_edesc *aead_giv_edesc_alloc(struct aead_givcrypt_request
+ 		sg_to_sec4_sg_last(req->dst, dst_nents,
+ 				   edesc->sec4_sg + sec4_sg_index, 0);
+ 	}
++	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
++				   DMA_TO_DEVICE);
+ 
+ 	return edesc;
+ }
+@@ -1425,6 +1464,8 @@ static int aead_givencrypt(struct aead_givcrypt_request *areq)
+ 	u32 *desc;
+ 	int ret = 0;
+ 
++	req->cryptlen += ctx->authsize;
++
+ 	/* allocate extended descriptor */
+ 	edesc = aead_giv_edesc_alloc(areq, DESC_JOB_IO_LEN *
+ 				     CAAM_CMD_SZ, &contig);
+@@ -1433,7 +1474,7 @@ static int aead_givencrypt(struct aead_givcrypt_request *areq)
+ 		return PTR_ERR(edesc);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "giv src@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "giv src@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(req->src),
+ 		       req->cryptlen, 1);
+ #endif
+@@ -1442,7 +1483,7 @@ static int aead_givencrypt(struct aead_givcrypt_request *areq)
+ 	init_aead_giv_job(ctx->sh_desc_givenc,
+ 			  ctx->sh_desc_givenc_dma, edesc, req, contig);
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "aead jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "aead jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, edesc->hw_desc,
+ 		       desc_bytes(edesc->hw_desc), 1);
+ #endif
+@@ -1501,6 +1542,7 @@ static struct ablkcipher_edesc *ablkcipher_edesc_alloc(struct ablkcipher_request
+ 	 * If so, include it. If not, create scatterlist.
+ 	 */
+ 	iv_dma = dma_map_single(jrdev, req->info, ivsize, DMA_TO_DEVICE);
++	dma_sync_single_for_device(jrdev, iv_dma, ivsize, DMA_TO_DEVICE);
+ 	if (!src_nents && iv_dma + ivsize == sg_dma_address(req->src))
+ 		iv_contig = true;
+ 	else
+@@ -1509,7 +1551,7 @@ static struct ablkcipher_edesc *ablkcipher_edesc_alloc(struct ablkcipher_request
+ 			sizeof(struct sec4_sg_entry);
+ 
+ 	/* allocate space for base edesc and hw desc commands, link tables */
+-	edesc = kmalloc(sizeof(struct ablkcipher_edesc) + desc_bytes +
++	edesc = kzalloc(sizeof(struct ablkcipher_edesc) + desc_bytes +
+ 			sec4_sg_bytes, GFP_DMA | flags);
+ 	if (!edesc) {
+ 		dev_err(jrdev, "could not allocate extended descriptor\n");
+@@ -1541,8 +1583,11 @@ static struct ablkcipher_edesc *ablkcipher_edesc_alloc(struct ablkcipher_request
+ 					    sec4_sg_bytes, DMA_TO_DEVICE);
+ 	edesc->iv_dma = iv_dma;
+ 
++	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
++				   DMA_TO_DEVICE);
++
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ablkcipher sec4_sg@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ablkcipher sec4_sg@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, edesc->sec4_sg,
+ 		       sec4_sg_bytes, 1);
+ #endif
+@@ -1571,7 +1616,7 @@ static int ablkcipher_encrypt(struct ablkcipher_request *req)
+ 	init_ablkcipher_job(ctx->sh_desc_enc,
+ 		ctx->sh_desc_enc_dma, edesc, req, iv_contig);
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ablkcipher jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ablkcipher jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, edesc->hw_desc,
+ 		       desc_bytes(edesc->hw_desc), 1);
+ #endif
+@@ -1609,7 +1654,7 @@ static int ablkcipher_decrypt(struct ablkcipher_request *req)
+ 		ctx->sh_desc_dec_dma, edesc, req, iv_contig);
+ 	desc = edesc->hw_desc;
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ablkcipher jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ablkcipher jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, edesc->hw_desc,
+ 		       desc_bytes(edesc->hw_desc), 1);
+ #endif
+@@ -2004,6 +2049,70 @@ static struct caam_alg_template driver_algs[] = {
+ 	},
+ 	/* ablkcipher descriptor */
+ 	{
++		.name = "ecb(des)",
++		.driver_name = "ecb-des-caam",
++		.blocksize = DES_BLOCK_SIZE,
++		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
++		.template_ablkcipher = {
++			.setkey = ablkcipher_setkey,
++			.encrypt = ablkcipher_encrypt,
++			.decrypt = ablkcipher_decrypt,
++			.geniv = "eseqiv",
++			.min_keysize = DES_KEY_SIZE,
++			.max_keysize = DES_KEY_SIZE,
++			.ivsize = DES_BLOCK_SIZE,
++			},
++		.class1_alg_type = OP_ALG_ALGSEL_DES | OP_ALG_AAI_ECB,
++	},
++	{
++		.name = "ecb(arc4)",
++		.driver_name = "ecb-arc4-caam",
++		.blocksize = ARC4_BLOCK_SIZE,
++		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
++		.template_ablkcipher = {
++			.setkey = ablkcipher_setkey,
++			.encrypt = ablkcipher_encrypt,
++			.decrypt = ablkcipher_decrypt,
++			.geniv = "eseqiv",
++			.min_keysize = ARC4_MIN_KEY_SIZE,
++			.max_keysize = ARC4_MAX_KEY_SIZE,
++			.ivsize = ARC4_BLOCK_SIZE,
++		},
++	.class1_alg_type = OP_ALG_ALGSEL_ARC4 | OP_ALG_AAI_ECB
++	},
++	{
++		.name = "ecb(aes)",
++		.driver_name = "ecb-aes-caam",
++		.blocksize = AES_BLOCK_SIZE,
++		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
++		.template_ablkcipher = {
++			.setkey = ablkcipher_setkey,
++			.encrypt = ablkcipher_encrypt,
++			.decrypt = ablkcipher_decrypt,
++			.geniv = "eseqiv",
++			.min_keysize = AES_MIN_KEY_SIZE,
++			.max_keysize = AES_MAX_KEY_SIZE,
++			.ivsize = AES_BLOCK_SIZE,
++			},
++		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_ECB,
++	},
++	{
++		.name = "ctr(aes)",
++		.driver_name = "ctr-aes-caam",
++		.blocksize = AES_BLOCK_SIZE,
++		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
++		.template_ablkcipher = {
++			.setkey = ablkcipher_setkey,
++			.encrypt = ablkcipher_encrypt,
++			.decrypt = ablkcipher_decrypt,
++			.geniv = "eseqiv",
++			.min_keysize = AES_MIN_KEY_SIZE,
++			.max_keysize = AES_MAX_KEY_SIZE,
++			.ivsize = AES_BLOCK_SIZE,
++			},
++		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_CTR_MOD128,
++	},
++	{
+ 		.name = "cbc(aes)",
+ 		.driver_name = "cbc-aes-caam",
+ 		.blocksize = AES_BLOCK_SIZE,
+@@ -2020,6 +2129,22 @@ static struct caam_alg_template driver_algs[] = {
+ 		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_CBC,
+ 	},
+ 	{
++		.name = "ecb(des3_ede)",
++		.driver_name = "ecb-des3-caam",
++		.blocksize = DES3_EDE_BLOCK_SIZE,
++		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
++		.template_ablkcipher = {
++			.setkey = ablkcipher_setkey,
++			.encrypt = ablkcipher_encrypt,
++			.decrypt = ablkcipher_decrypt,
++			.geniv = "eseqiv",
++			.min_keysize = DES3_EDE_KEY_SIZE,
++			.max_keysize = DES3_EDE_KEY_SIZE,
++			.ivsize = DES3_EDE_BLOCK_SIZE,
++			},
++		.class1_alg_type = OP_ALG_ALGSEL_3DES | OP_ALG_AAI_ECB,
++	},
++	{
+ 		.name = "cbc(des3_ede)",
+ 		.driver_name = "cbc-3des-caam",
+ 		.blocksize = DES3_EDE_BLOCK_SIZE,
+@@ -2055,6 +2180,7 @@ static struct caam_alg_template driver_algs[] = {
+ 
+ struct caam_crypto_alg {
+ 	struct list_head entry;
++	struct device *ctrldev;
+ 	int class1_alg_type;
+ 	int class2_alg_type;
+ 	int alg_op;
+@@ -2067,12 +2193,14 @@ static int caam_cra_init(struct crypto_tfm *tfm)
+ 	struct caam_crypto_alg *caam_alg =
+ 		 container_of(alg, struct caam_crypto_alg, crypto_alg);
+ 	struct caam_ctx *ctx = crypto_tfm_ctx(tfm);
++	struct caam_drv_private *priv = dev_get_drvdata(caam_alg->ctrldev);
++	int tgt_jr = atomic_inc_return(&priv->tfm_count);
+ 
+-	ctx->jrdev = caam_jr_alloc();
+-	if (IS_ERR(ctx->jrdev)) {
+-		pr_err("Job Ring Device allocation for transform failed\n");
+-		return PTR_ERR(ctx->jrdev);
+-	}
++	/*
++	 * distribute tfms across job rings to ensure in-order
++	 * crypto request processing per tfm
++	 */
++	ctx->jrdev = priv->algapi_jr[(tgt_jr / 2) % priv->num_jrs_for_algapi];
+ 
+ 	/* copy descriptor header template value */
+ 	ctx->class1_alg_type = OP_TYPE_CLASS1_ALG | caam_alg->class1_alg_type;
+@@ -2099,26 +2227,57 @@ static void caam_cra_exit(struct crypto_tfm *tfm)
+ 		dma_unmap_single(ctx->jrdev, ctx->sh_desc_givenc_dma,
+ 				 desc_bytes(ctx->sh_desc_givenc),
+ 				 DMA_TO_DEVICE);
+-
+-	caam_jr_free(ctx->jrdev);
+ }
+ 
+ static void __exit caam_algapi_exit(void)
+ {
+ 
++	struct device_node *dev_node;
++	struct platform_device *pdev;
++	struct device *ctrldev;
++	struct caam_drv_private *priv;
+ 	struct caam_crypto_alg *t_alg, *n;
++	int i, err;
+ 
+-	if (!alg_list.next)
++	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
++	if (!dev_node) {
++		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
++		if (!dev_node)
++			return;
++	}
++
++	pdev = of_find_device_by_node(dev_node);
++	if (!pdev) {
++		of_node_put(dev_node);
++		return;
++	}
++
++	ctrldev = &pdev->dev;
++	priv = dev_get_drvdata(ctrldev);
++
++	if (!priv->alg_list.next) {
++		of_node_put(dev_node);
+ 		return;
++	}
+ 
+-	list_for_each_entry_safe(t_alg, n, &alg_list, entry) {
++	list_for_each_entry_safe(t_alg, n, &priv->alg_list, entry) {
+ 		crypto_unregister_alg(&t_alg->crypto_alg);
+ 		list_del(&t_alg->entry);
+ 		kfree(t_alg);
+ 	}
++
++	for (i = 0; i < priv->total_jobrs; i++) {
++		err = caam_jr_deregister(priv->algapi_jr[i]);
++		if (err < 0)
++			break;
++	}
++	kfree(priv->algapi_jr);
++
++	of_node_put(dev_node);
+ }
+ 
+-static struct caam_crypto_alg *caam_alg_alloc(struct caam_alg_template
++static struct caam_crypto_alg *caam_alg_alloc(struct device *ctrldev,
++					      struct caam_alg_template
+ 					      *template)
+ {
+ 	struct caam_crypto_alg *t_alg;
+@@ -2126,7 +2285,7 @@ static struct caam_crypto_alg *caam_alg_alloc(struct caam_alg_template
+ 
+ 	t_alg = kzalloc(sizeof(struct caam_crypto_alg), GFP_KERNEL);
+ 	if (!t_alg) {
+-		pr_err("failed to allocate t_alg\n");
++		dev_err(ctrldev, "failed to allocate t_alg\n");
+ 		return ERR_PTR(-ENOMEM);
+ 	}
+ 
+@@ -2142,8 +2301,12 @@ static struct caam_crypto_alg *caam_alg_alloc(struct caam_alg_template
+ 	alg->cra_blocksize = template->blocksize;
+ 	alg->cra_alignmask = 0;
+ 	alg->cra_ctxsize = sizeof(struct caam_ctx);
+-	alg->cra_flags = CRYPTO_ALG_ASYNC | CRYPTO_ALG_KERN_DRIVER_ONLY |
+-			 template->type;
++	alg->cra_flags = CRYPTO_ALG_ASYNC | template->type;
++
++#ifdef CRYPTO_ALG_KERN_DRIVER_ONLY
++	alg->cra_flags |= CRYPTO_ALG_KERN_DRIVER_ONLY;
++#endif
++
+ 	switch (template->type) {
+ 	case CRYPTO_ALG_TYPE_ABLKCIPHER:
+ 		alg->cra_type = &crypto_ablkcipher_type;
+@@ -2158,40 +2321,147 @@ static struct caam_crypto_alg *caam_alg_alloc(struct caam_alg_template
+ 	t_alg->class1_alg_type = template->class1_alg_type;
+ 	t_alg->class2_alg_type = template->class2_alg_type;
+ 	t_alg->alg_op = template->alg_op;
++	t_alg->ctrldev = ctrldev;
+ 
+ 	return t_alg;
+ }
+ 
+ static int __init caam_algapi_init(void)
+ {
+-	int i = 0, err = 0;
++	struct device_node *dev_node;
++	struct platform_device *pdev;
++	struct device *ctrldev, **jrdev;
++	struct caam_drv_private *priv;
++	int i = 0, err = 0, md_limit = 0;
++	int des_inst, aes_inst, md_inst;
++	u64 cha_inst;
++
++	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
++	if (!dev_node) {
++		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
++		if (!dev_node)
++			return -ENODEV;
++	}
++
++	pdev = of_find_device_by_node(dev_node);
++	if (!pdev) {
++		of_node_put(dev_node);
++		return -ENODEV;
++	}
++
++	ctrldev = &pdev->dev;
++	priv = dev_get_drvdata(ctrldev);
+ 
+-	INIT_LIST_HEAD(&alg_list);
++	INIT_LIST_HEAD(&priv->alg_list);
++
++	jrdev = kmalloc(sizeof(*jrdev) * priv->total_jobrs, GFP_KERNEL);
++	if (!jrdev) {
++		of_node_put(dev_node);
++		return -ENOMEM;
++	}
++
++	for (i = 0; i < priv->total_jobrs; i++) {
++		err = caam_jr_register(ctrldev, &jrdev[i]);
++		if (err < 0)
++			break;
++	}
++	if (err < 0 && i == 0) {
++		dev_err(ctrldev, "algapi error in job ring registration: %d\n",
++			err);
++		of_node_put(dev_node);
++		kfree(jrdev);
++		return err;
++	}
++
++	priv->num_jrs_for_algapi = i;
++	priv->algapi_jr = jrdev;
++	atomic_set(&priv->tfm_count, -1);
++
++	/*
++	 * register crypto algorithms the device supports
++	 * first, detect presence of DES, AES, and MD blocks. If MD present,
++	 * determine limit of supported digest size
++	 */
++	cha_inst = rd_reg64(&priv->ctrl->perfmon.cha_num);
++	des_inst = (cha_inst & CHA_ID_DES_MASK) >> CHA_ID_DES_SHIFT;
++	aes_inst = (cha_inst & CHA_ID_AES_MASK) >> CHA_ID_AES_SHIFT;
++	md_inst = (cha_inst & CHA_ID_MD_MASK) >> CHA_ID_MD_SHIFT;
++	if (md_inst) {
++		md_limit = SHA512_DIGEST_SIZE;
++		if ((rd_reg64(&priv->ctrl->perfmon.cha_id) & CHA_ID_MD_MASK)
++		     == CHA_ID_MD_LP256) /* LP256 limits digest size */
++			md_limit = SHA256_DIGEST_SIZE;
++	}
+ 
+-	/* register crypto algorithms the device supports */
+ 	for (i = 0; i < ARRAY_SIZE(driver_algs); i++) {
+-		/* TODO: check if h/w supports alg */
+ 		struct caam_crypto_alg *t_alg;
+-
+-		t_alg = caam_alg_alloc(&driver_algs[i]);
++		bool done = false;
++
++authencesn:
++		/*
++		 * All registrable algs in this module require a blockcipher
++		 * All aead algs require message digests, so check them for
++		 * instantiation and size.
++		 */
++		if (driver_algs[i].type == CRYPTO_ALG_TYPE_AEAD) {
++			/* If no MD instantiated, or MD too small, skip */
++			if ((!md_inst) ||
++			    (driver_algs[i].template_aead.maxauthsize >
++			     md_limit))
++				continue;
++		}
++		/* If DES alg, and CHA not instantiated, skip */
++		if ((driver_algs[i].class1_alg_type & OP_ALG_ALGSEL_3DES) ||
++		    (driver_algs[i].class1_alg_type & OP_ALG_ALGSEL_DES))
++			if (!des_inst)
++				continue;
++		/* If AES alg, and CHA not instantiated, skip */
++		if (driver_algs[i].class1_alg_type & OP_ALG_ALGSEL_AES)
++			if (!aes_inst)
++				continue;
++
++		t_alg = caam_alg_alloc(ctrldev, &driver_algs[i]);
+ 		if (IS_ERR(t_alg)) {
+ 			err = PTR_ERR(t_alg);
+-			pr_warn("%s alg allocation failed\n",
+-				driver_algs[i].driver_name);
++			dev_warn(ctrldev, "%s alg allocation failed\n",
++				 driver_algs[i].driver_name);
+ 			continue;
+ 		}
+ 
+ 		err = crypto_register_alg(&t_alg->crypto_alg);
+ 		if (err) {
+-			pr_warn("%s alg registration failed\n",
++			dev_warn(ctrldev, "%s alg registration failed\n",
+ 				t_alg->crypto_alg.cra_driver_name);
+ 			kfree(t_alg);
+-		} else
+-			list_add_tail(&t_alg->entry, &alg_list);
++		} else {
++			list_add_tail(&t_alg->entry, &priv->alg_list);
++			dev_info(ctrldev, "%s\n",
++				 t_alg->crypto_alg.cra_driver_name);
++
++			if (driver_algs[i].type == CRYPTO_ALG_TYPE_AEAD &&
++			    !memcmp(driver_algs[i].name, "authenc", 7) &&
++			    !done) {
++				char *name;
++
++				name = driver_algs[i].name;
++				memmove(name + 10, name + 7, strlen(name) - 7);
++				memcpy(name + 7, "esn", 3);
++
++				name = driver_algs[i].driver_name;
++				memmove(name + 10, name + 7, strlen(name) - 7);
++				memcpy(name + 7, "esn", 3);
++
++				done = true;
++				goto authencesn;
++			}
++		}
+ 	}
+-	if (!list_empty(&alg_list))
+-		pr_info("caam algorithms registered in /proc/crypto\n");
+ 
++	if (!list_empty(&priv->alg_list))
++		dev_info(ctrldev, "%s algorithms registered in /proc/crypto\n",
++			 (char *)of_get_property(dev_node, "compatible", NULL));
++
++	of_node_put(dev_node);
+ 	return err;
+ }
+ 
+diff --git a/drivers/crypto/caam/caamhash.c b/drivers/crypto/caam/caamhash.c
+index 0378328..f904499 100644
+--- a/drivers/crypto/caam/caamhash.c
++++ b/drivers/crypto/caam/caamhash.c
+@@ -1,7 +1,7 @@
+ /*
+  * caam - Freescale FSL CAAM support for ahash functions of crypto API
+  *
+- * Copyright 2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2011-2013 Freescale Semiconductor, Inc.
+  *
+  * Based on caamalg.c crypto API driver.
+  *
+@@ -62,6 +62,7 @@
+ #include "error.h"
+ #include "sg_sw_sec4.h"
+ #include "key_gen.h"
++#include <linux/string.h>
+ 
+ #define CAAM_CRA_PRIORITY		3000
+ 
+@@ -72,6 +73,8 @@
+ #define CAAM_MAX_HASH_DIGEST_SIZE	SHA512_DIGEST_SIZE
+ 
+ /* length of descriptors text */
++#define DESC_JOB_IO_LEN			(CAAM_CMD_SZ * 5 + CAAM_PTR_SZ * 3)
++
+ #define DESC_AHASH_BASE			(4 * CAAM_CMD_SZ)
+ #define DESC_AHASH_UPDATE_LEN		(6 * CAAM_CMD_SZ)
+ #define DESC_AHASH_UPDATE_FIRST_LEN	(DESC_AHASH_BASE + 4 * CAAM_CMD_SZ)
+@@ -89,14 +92,13 @@
+ 
+ #ifdef DEBUG
+ /* for print_hex_dumps with line references */
++#define xstr(s) str(s)
++#define str(s) #s
+ #define debug(format, arg...) printk(format, arg)
+ #else
+ #define debug(format, arg...)
+ #endif
+ 
+-
+-static struct list_head hash_list;
+-
+ /* ahash per-session context */
+ struct caam_hash_ctx {
+ 	struct device *jrdev;
+@@ -115,6 +117,7 @@ struct caam_hash_ctx {
+ 	u8 key[CAAM_MAX_HASH_KEY_SIZE];
+ 	dma_addr_t key_dma;
+ 	int ctx_len;
++	unsigned int key_len;
+ 	unsigned int split_key_len;
+ 	unsigned int split_key_pad_len;
+ };
+@@ -166,6 +169,7 @@ static inline dma_addr_t buf_map_to_sec4_sg(struct device *jrdev,
+ 	dma_addr_t buf_dma;
+ 
+ 	buf_dma = dma_map_single(jrdev, buf, buflen, DMA_TO_DEVICE);
++	dma_sync_single_for_device(jrdev, buf_dma, buflen, DMA_TO_DEVICE);
+ 	dma_to_sec4_sg_one(sec4_sg, buf_dma, buflen, 0);
+ 
+ 	return buf_dma;
+@@ -208,6 +212,9 @@ static inline void ctx_map_to_sec4_sg(u32 *desc, struct device *jrdev,
+ 				      u32 flag)
+ {
+ 	state->ctx_dma = dma_map_single(jrdev, state->caam_ctx, ctx_len, flag);
++	if ((flag == DMA_TO_DEVICE) || (flag == DMA_BIDIRECTIONAL))
++		dma_sync_single_for_device(jrdev, state->ctx_dma, ctx_len,
++					   flag);
+ 	dma_to_sec4_sg_one(sec4_sg, state->ctx_dma, ctx_len, 0);
+ }
+ 
+@@ -219,6 +226,13 @@ static inline void append_key_ahash(u32 *desc, struct caam_hash_ctx *ctx)
+ 			  KEY_DEST_MDHA_SPLIT | KEY_ENC);
+ }
+ 
++static inline void append_key_axcbc(u32 *desc, struct caam_hash_ctx *ctx)
++{
++	append_key_as_imm(desc, ctx->key, ctx->key_len,
++			  ctx->key_len, CLASS_1 |
++			  KEY_DEST_CLASS_REG);
++}
++
+ /* Append key if it has been set */
+ static inline void init_sh_desc_key_ahash(u32 *desc, struct caam_hash_ctx *ctx)
+ {
+@@ -240,6 +254,25 @@ static inline void init_sh_desc_key_ahash(u32 *desc, struct caam_hash_ctx *ctx)
+ 	append_cmd(desc, SET_OK_NO_PROP_ERRORS | CMD_LOAD);
+ }
+ 
++static inline void init_sh_desc_key_axcbc(u32 *desc, struct caam_hash_ctx *ctx)
++{
++	u32 *key_jump_cmd;
++
++	init_sh_desc(desc, HDR_SHARE_SERIAL);
++
++	if (ctx->key_len) {
++		key_jump_cmd = append_jump(desc, JUMP_JSL | JUMP_TEST_ALL |
++					   JUMP_COND_SHRD);
++
++		append_key_axcbc(desc, ctx);
++
++		set_jump_tgt_here(desc, key_jump_cmd);
++	}
++
++	/* Propagate errors from shared to job descriptor */
++	append_cmd(desc, SET_OK_NO_PROP_ERRORS | CMD_LOAD);
++
++}
+ /*
+  * For ahash read data from seqin following state->caam_ctx,
+  * and write resulting class2 context to seqout, which may be state->caam_ctx
+@@ -259,6 +292,20 @@ static inline void ahash_append_load_str(u32 *desc, int digestsize)
+ 			 LDST_SRCDST_BYTE_CONTEXT);
+ }
+ 
++static inline void axcbc_append_load_str(u32 *desc, int digestsize)
++{
++	/* Calculate remaining bytes to read */
++	 append_math_add(desc, VARSEQINLEN, SEQINLEN, REG0, CAAM_CMD_SZ);
++
++	/* Read remaining bytes */
++	append_seq_fifo_load(desc, 0, FIFOLD_CLASS_CLASS1 | FIFOLD_TYPE_LAST1 |
++			     FIFOLD_TYPE_MSG | KEY_VLF);
++
++	/* Store class1 context bytes */
++	append_seq_store(desc, digestsize, LDST_CLASS_1_CCB |
++			 LDST_SRCDST_BYTE_CONTEXT);
++}
++
+ /*
+  * For ahash update, final and finup, import context, read and write to seqout
+  */
+@@ -281,6 +328,27 @@ static inline void ahash_ctx_data_to_out(u32 *desc, u32 op, u32 state,
+ 	ahash_append_load_str(desc, digestsize);
+ }
+ 
++/*
++ * For ahash update, final and finup, import context, read and write to seqout
++ */
++static inline void axcbc_ctx_data_to_out(u32 *desc, u32 op, u32 state,
++					 int digestsize,
++					 struct caam_hash_ctx *ctx)
++{
++	init_sh_desc_key_axcbc(desc, ctx);
++
++	/* Import context from software */
++	append_cmd(desc, CMD_SEQ_LOAD | LDST_SRCDST_BYTE_CONTEXT |
++		   LDST_CLASS_1_CCB | ctx->ctx_len);
++
++	/* Class 1 operation */
++	append_operation(desc, op | state | OP_ALG_ENCRYPT);
++
++	/*
++	 * Load from buf and/or src and write to req->result or state->context
++	 */
++	axcbc_append_load_str(desc, digestsize);
++}
+ /* For ahash firsts and digest, read and write to seqout */
+ static inline void ahash_data_to_out(u32 *desc, u32 op, u32 state,
+ 				     int digestsize, struct caam_hash_ctx *ctx)
+@@ -296,6 +364,21 @@ static inline void ahash_data_to_out(u32 *desc, u32 op, u32 state,
+ 	ahash_append_load_str(desc, digestsize);
+ }
+ 
++/* For ahash firsts and digest, read and write to seqout */
++static inline void axcbc_data_to_out(u32 *desc, u32 op, u32 state,
++				     int digestsize, struct caam_hash_ctx *ctx)
++{
++	init_sh_desc_key_axcbc(desc, ctx);
++
++	/* Class 1 operation */
++	append_operation(desc, op | state | OP_ALG_ENCRYPT);
++
++	/*
++	 * Load from buf and/or src and write to req->result or state->context
++	 */
++	axcbc_append_load_str(desc, digestsize);
++}
++
+ static int ahash_set_sh_desc(struct crypto_ahash *ahash)
+ {
+ 	struct caam_hash_ctx *ctx = crypto_ahash_ctx(ahash);
+@@ -330,8 +413,7 @@ static int ahash_set_sh_desc(struct crypto_ahash *ahash)
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR,
+-		       "ahash update shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ahash update shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
+ 
+@@ -349,10 +431,11 @@ static int ahash_set_sh_desc(struct crypto_ahash *ahash)
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR,
+-		       "ahash update first shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ahash update first shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_update_first_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
+ 
+ 	/* ahash_final shared descriptor */
+ 	desc = ctx->sh_desc_fin;
+@@ -367,10 +450,12 @@ static int ahash_set_sh_desc(struct crypto_ahash *ahash)
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ahash final shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ahash final shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 		       desc_bytes(desc), 1);
+ #endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_fin_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
+ 
+ 	/* ahash_finup shared descriptor */
+ 	desc = ctx->sh_desc_finup;
+@@ -385,10 +470,12 @@ static int ahash_set_sh_desc(struct crypto_ahash *ahash)
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ahash finup shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ahash finup shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 		       desc_bytes(desc), 1);
+ #endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_finup_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
+ 
+ 	/* ahash_digest shared descriptor */
+ 	desc = ctx->sh_desc_digest;
+@@ -404,15 +491,134 @@ static int ahash_set_sh_desc(struct crypto_ahash *ahash)
+ 		return -ENOMEM;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR,
+-		       "ahash digest shdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ahash digest shdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 		       desc_bytes(desc), 1);
+ #endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_digest_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
+ 
+ 	return 0;
+ }
+ 
++static int axcbc_set_sh_desc(struct crypto_ahash *ahash)
++{
++	struct caam_hash_ctx *ctx = crypto_ahash_ctx(ahash);
++	int digestsize = crypto_ahash_digestsize(ahash);
++	struct device *jrdev = ctx->jrdev;
++	u32 have_key = 0;
++	u32 *desc;
++
++	/* ahash_update shared descriptor */
++	desc = ctx->sh_desc_update;
++
++	init_sh_desc(desc, HDR_SHARE_SERIAL);
++
++	/* Import context from software */
++	 append_cmd(desc, CMD_SEQ_LOAD | LDST_SRCDST_BYTE_CONTEXT |
++		   LDST_CLASS_1_CCB | ctx->ctx_len);
++
++	/* Class 1 operation */
++	append_operation(desc, ctx->alg_type | OP_ALG_AS_UPDATE |
++			 OP_ALG_ENCRYPT);
++
++	/* Load data and write to result or context */
++	axcbc_append_load_str(desc, ctx->ctx_len);
++
++	ctx->sh_desc_update_dma = dma_map_single(jrdev, desc, desc_bytes(desc),
++						 DMA_TO_DEVICE);
++	if (dma_mapping_error(jrdev, ctx->sh_desc_update_dma)) {
++		dev_err(jrdev, "unable to map shared descriptor\n");
++		return -ENOMEM;
++	}
++#ifdef DEBUG
++	print_hex_dump(KERN_ERR, "ahash update shdesc@"xstr(__LINE__)": ",
++		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
++#endif
++
++	/* ahash_update_first shared descriptor */
++	desc = ctx->sh_desc_update_first;
++
++	axcbc_data_to_out(desc, have_key | ctx->alg_type, OP_ALG_AS_INIT,
++			  ctx->ctx_len, ctx);
++
++	ctx->sh_desc_update_first_dma = dma_map_single(jrdev, desc,
++						       desc_bytes(desc),
++						       DMA_TO_DEVICE);
++	if (dma_mapping_error(jrdev, ctx->sh_desc_update_first_dma)) {
++		dev_err(jrdev, "unable to map shared descriptor\n");
++		return -ENOMEM;
++	}
++#ifdef DEBUG
++	print_hex_dump(KERN_ERR, "ahash update first shdesc@"xstr(__LINE__)": ",
++		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
++#endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_update_first_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
++
++	/* ahash_final shared descriptor */
++	desc = ctx->sh_desc_fin;
++
++	axcbc_ctx_data_to_out(desc, have_key | ctx->alg_type,
++			      OP_ALG_AS_FINALIZE, digestsize, ctx);
++
++	ctx->sh_desc_fin_dma = dma_map_single(jrdev, desc, desc_bytes(desc),
++					      DMA_TO_DEVICE);
++	if (dma_mapping_error(jrdev, ctx->sh_desc_fin_dma)) {
++		dev_err(jrdev, "unable to map shared descriptor\n");
++		return -ENOMEM;
++	}
++#ifdef DEBUG
++	print_hex_dump(KERN_ERR, "ahash final shdesc@"xstr(__LINE__)": ",
++		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
++		       desc_bytes(desc), 1);
++#endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_fin_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
++
++	/* ahash_finup shared descriptor */
++	desc = ctx->sh_desc_finup;
++
++	axcbc_ctx_data_to_out(desc, have_key | ctx->alg_type,
++			      OP_ALG_AS_FINALIZE, digestsize, ctx);
++
++	ctx->sh_desc_finup_dma = dma_map_single(jrdev, desc, desc_bytes(desc),
++						DMA_TO_DEVICE);
++	if (dma_mapping_error(jrdev, ctx->sh_desc_finup_dma)) {
++		dev_err(jrdev, "unable to map shared descriptor\n");
++		return -ENOMEM;
++	}
++#ifdef DEBUG
++	print_hex_dump(KERN_ERR, "ahash finup shdesc@"xstr(__LINE__)": ",
++		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
++		       desc_bytes(desc), 1);
++#endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_finup_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
++
++	/* ahash_digest shared descriptor */
++	desc = ctx->sh_desc_digest;
++
++	axcbc_data_to_out(desc, have_key | ctx->alg_type, OP_ALG_AS_INITFINAL,
++			  digestsize, ctx);
++
++	ctx->sh_desc_digest_dma = dma_map_single(jrdev, desc,
++						 desc_bytes(desc),
++						 DMA_TO_DEVICE);
++	if (dma_mapping_error(jrdev, ctx->sh_desc_digest_dma)) {
++		dev_err(jrdev, "unable to map shared descriptor\n");
++		return -ENOMEM;
++	}
++#ifdef DEBUG
++	print_hex_dump(KERN_ERR, "ahash digest shdesc@"xstr(__LINE__)": ",
++		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
++		       desc_bytes(desc), 1);
++#endif
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_digest_dma,
++				   desc_bytes(desc), DMA_TO_DEVICE);
++
++	return 0;
++}
+ static int gen_split_hash_key(struct caam_hash_ctx *ctx, const u8 *key_in,
+ 			      u32 keylen)
+ {
+@@ -446,6 +652,8 @@ static int hash_digest_key(struct caam_hash_ctx *ctx, const u8 *key_in,
+ 		kfree(desc);
+ 		return -ENOMEM;
+ 	}
++	dma_sync_single_for_device(jrdev, src_dma, *keylen, DMA_TO_DEVICE);
++
+ 	dst_dma = dma_map_single(jrdev, (void *)key_out, digestsize,
+ 				 DMA_FROM_DEVICE);
+ 	if (dma_mapping_error(jrdev, dst_dma)) {
+@@ -466,9 +674,9 @@ static int hash_digest_key(struct caam_hash_ctx *ctx, const u8 *key_in,
+ 			 LDST_SRCDST_BYTE_CONTEXT);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "key_in@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "key_in@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, key_in, *keylen, 1);
+-	print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
+ 
+@@ -481,8 +689,7 @@ static int hash_digest_key(struct caam_hash_ctx *ctx, const u8 *key_in,
+ 		wait_for_completion_interruptible(&result.completion);
+ 		ret = result.err;
+ #ifdef DEBUG
+-		print_hex_dump(KERN_ERR,
+-			       "digested key@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "digested key@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, key_in,
+ 			       digestsize, 1);
+ #endif
+@@ -490,6 +697,7 @@ static int hash_digest_key(struct caam_hash_ctx *ctx, const u8 *key_in,
+ 	*keylen = digestsize;
+ 
+ 	dma_unmap_single(jrdev, src_dma, *keylen, DMA_TO_DEVICE);
++	dma_sync_single_for_cpu(jrdev, dst_dma, digestsize, DMA_FROM_DEVICE);
+ 	dma_unmap_single(jrdev, dst_dma, digestsize, DMA_FROM_DEVICE);
+ 
+ 	kfree(desc);
+@@ -533,7 +741,7 @@ static int ahash_setkey(struct crypto_ahash *ahash,
+ #ifdef DEBUG
+ 	printk(KERN_ERR "split_key_len %d split_key_pad_len %d\n",
+ 	       ctx->split_key_len, ctx->split_key_pad_len);
+-	print_hex_dump(KERN_ERR, "key in @"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "key in @"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, key, keylen, 1);
+ #endif
+ 
+@@ -547,8 +755,12 @@ static int ahash_setkey(struct crypto_ahash *ahash,
+ 		dev_err(jrdev, "unable to map key i/o memory\n");
+ 		return -ENOMEM;
+ 	}
++
++	dma_sync_single_for_device(jrdev, ctx->key_dma, ctx->split_key_pad_len,
++				   DMA_TO_DEVICE);
++
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ctx.key@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ctx.key@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, ctx->key,
+ 		       ctx->split_key_pad_len, 1);
+ #endif
+@@ -567,6 +779,25 @@ badkey:
+ 	return -EINVAL;
+ }
+ 
++static int axcbc_setkey(struct crypto_ahash *ahash,
++			const u8 *key, unsigned int keylen)
++{
++	struct caam_hash_ctx *ctx = crypto_ahash_ctx(ahash);
++	int ret = 0;
++
++	ctx->key_len = keylen;
++	memcpy(ctx->key, key, keylen);
++
++#ifdef DEBUG
++	print_hex_dump(KERN_ERR, "ctx.key@"xstr(__LINE__)": ",
++		       DUMP_PREFIX_ADDRESS, 16, 4, ctx->key,
++		       ctx->key_len, 1);
++#endif
++
++	ret = axcbc_set_sh_desc(ahash);
++
++	return ret;
++}
+ /*
+  * ahash_edesc - s/w-extended ahash descriptor
+  * @dst_dma: physical mapped address of req->result
+@@ -594,8 +825,11 @@ static inline void ahash_unmap(struct device *dev,
+ 	if (edesc->src_nents)
+ 		dma_unmap_sg_chained(dev, req->src, edesc->src_nents,
+ 				     DMA_TO_DEVICE, edesc->chained);
+-	if (edesc->dst_dma)
++	if (edesc->dst_dma) {
++		dma_sync_single_for_cpu(dev, edesc->dst_dma, dst_len,
++					DMA_FROM_DEVICE);
+ 		dma_unmap_single(dev, edesc->dst_dma, dst_len, DMA_FROM_DEVICE);
++	}
+ 
+ 	if (edesc->sec4_sg_bytes)
+ 		dma_unmap_single(dev, edesc->sec4_sg_dma,
+@@ -610,8 +844,12 @@ static inline void ahash_unmap_ctx(struct device *dev,
+ 	struct caam_hash_ctx *ctx = crypto_ahash_ctx(ahash);
+ 	struct caam_hash_state *state = ahash_request_ctx(req);
+ 
+-	if (state->ctx_dma)
++	if (state->ctx_dma) {
++		if ((flag == DMA_FROM_DEVICE) || (flag == DMA_BIDIRECTIONAL))
++			dma_sync_single_for_cpu(dev, state->ctx_dma,
++						ctx->ctx_len, flag);
+ 		dma_unmap_single(dev, state->ctx_dma, ctx->ctx_len, flag);
++	}
+ 	ahash_unmap(dev, edesc, req, dst_len);
+ }
+ 
+@@ -641,11 +879,11 @@ static void ahash_done(struct device *jrdev, u32 *desc, u32 err,
+ 	kfree(edesc);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ctx@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ctx@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, state->caam_ctx,
+ 		       ctx->ctx_len, 1);
+ 	if (req->result)
+-		print_hex_dump(KERN_ERR, "result@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "result@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, req->result,
+ 			       digestsize, 1);
+ #endif
+@@ -679,11 +917,11 @@ static void ahash_done_bi(struct device *jrdev, u32 *desc, u32 err,
+ 	kfree(edesc);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ctx@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ctx@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, state->caam_ctx,
+ 		       ctx->ctx_len, 1);
+ 	if (req->result)
+-		print_hex_dump(KERN_ERR, "result@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "result@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, req->result,
+ 			       digestsize, 1);
+ #endif
+@@ -717,11 +955,11 @@ static void ahash_done_ctx_src(struct device *jrdev, u32 *desc, u32 err,
+ 	kfree(edesc);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ctx@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ctx@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, state->caam_ctx,
+ 		       ctx->ctx_len, 1);
+ 	if (req->result)
+-		print_hex_dump(KERN_ERR, "result@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "result@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, req->result,
+ 			       digestsize, 1);
+ #endif
+@@ -755,11 +993,11 @@ static void ahash_done_ctx_dst(struct device *jrdev, u32 *desc, u32 err,
+ 	kfree(edesc);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ctx@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ctx@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, state->caam_ctx,
+ 		       ctx->ctx_len, 1);
+ 	if (req->result)
+-		print_hex_dump(KERN_ERR, "result@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "result@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, req->result,
+ 			       digestsize, 1);
+ #endif
+@@ -805,7 +1043,7 @@ static int ahash_update_ctx(struct ahash_request *req)
+ 		 * allocate space for base edesc and hw desc commands,
+ 		 * link tables
+ 		 */
+-		edesc = kmalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
++		edesc = kzalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
+ 				sec4_sg_bytes, GFP_DMA | flags);
+ 		if (!edesc) {
+ 			dev_err(jrdev,
+@@ -854,8 +1092,11 @@ static int ahash_update_ctx(struct ahash_request *req)
+ 
+ 		append_seq_out_ptr(desc, state->ctx_dma, ctx->ctx_len, 0);
+ 
++		dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma,
++					   sec4_sg_bytes, DMA_TO_DEVICE);
++
+ #ifdef DEBUG
+-		print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 			       desc_bytes(desc), 1);
+ #endif
+@@ -874,9 +1115,9 @@ static int ahash_update_ctx(struct ahash_request *req)
+ 		*next_buflen = last_buflen;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "buf@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "buf@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, buf, *buflen, 1);
+-	print_hex_dump(KERN_ERR, "next buf@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "next buf@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, next_buf,
+ 		       *next_buflen, 1);
+ #endif
+@@ -907,7 +1148,7 @@ static int ahash_final_ctx(struct ahash_request *req)
+ 	sec4_sg_bytes = (1 + (buflen ? 1 : 0)) * sizeof(struct sec4_sg_entry);
+ 
+ 	/* allocate space for base edesc and hw desc commands, link tables */
+-	edesc = kmalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
++	edesc = kzalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
+ 			sec4_sg_bytes, GFP_DMA | flags);
+ 	if (!edesc) {
+ 		dev_err(jrdev, "could not allocate extended descriptor\n");
+@@ -939,8 +1180,11 @@ static int ahash_final_ctx(struct ahash_request *req)
+ 	edesc->dst_dma = map_seq_out_ptr_result(desc, jrdev, req->result,
+ 						digestsize);
+ 
++	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
++				   DMA_TO_DEVICE);
++
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
+ 
+@@ -983,7 +1227,7 @@ static int ahash_finup_ctx(struct ahash_request *req)
+ 			 sizeof(struct sec4_sg_entry);
+ 
+ 	/* allocate space for base edesc and hw desc commands, link tables */
+-	edesc = kmalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
++	edesc = kzalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
+ 			sec4_sg_bytes, GFP_DMA | flags);
+ 	if (!edesc) {
+ 		dev_err(jrdev, "could not allocate extended descriptor\n");
+@@ -1018,8 +1262,11 @@ static int ahash_finup_ctx(struct ahash_request *req)
+ 	edesc->dst_dma = map_seq_out_ptr_result(desc, jrdev, req->result,
+ 						digestsize);
+ 
++	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
++				   DMA_TO_DEVICE);
++
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
+ 
+@@ -1058,7 +1305,7 @@ static int ahash_digest(struct ahash_request *req)
+ 	sec4_sg_bytes = src_nents * sizeof(struct sec4_sg_entry);
+ 
+ 	/* allocate space for base edesc and hw desc commands, link tables */
+-	edesc = kmalloc(sizeof(struct ahash_edesc) + sec4_sg_bytes +
++	edesc = kzalloc(sizeof(struct ahash_edesc) + sec4_sg_bytes +
+ 			DESC_JOB_IO_LEN, GFP_DMA | flags);
+ 	if (!edesc) {
+ 		dev_err(jrdev, "could not allocate extended descriptor\n");
+@@ -1068,6 +1315,7 @@ static int ahash_digest(struct ahash_request *req)
+ 			  DESC_JOB_IO_LEN;
+ 	edesc->sec4_sg_dma = dma_map_single(jrdev, edesc->sec4_sg,
+ 					    sec4_sg_bytes, DMA_TO_DEVICE);
++	edesc->sec4_sg_bytes = sec4_sg_bytes;
+ 	edesc->src_nents = src_nents;
+ 	edesc->chained = chained;
+ 
+@@ -1085,11 +1333,14 @@ static int ahash_digest(struct ahash_request *req)
+ 	}
+ 	append_seq_in_ptr(desc, src_dma, req->nbytes, options);
+ 
++	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma,
++				   edesc->sec4_sg_bytes, DMA_TO_DEVICE);
++
+ 	edesc->dst_dma = map_seq_out_ptr_result(desc, jrdev, req->result,
+ 						digestsize);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
+ 
+@@ -1123,7 +1374,7 @@ static int ahash_final_no_ctx(struct ahash_request *req)
+ 	int sh_len;
+ 
+ 	/* allocate space for base edesc and hw desc commands, link tables */
+-	edesc = kmalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN,
++	edesc = kzalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN,
+ 			GFP_DMA | flags);
+ 	if (!edesc) {
+ 		dev_err(jrdev, "could not allocate extended descriptor\n");
+@@ -1142,8 +1393,10 @@ static int ahash_final_no_ctx(struct ahash_request *req)
+ 						digestsize);
+ 	edesc->src_nents = 0;
+ 
++	dma_sync_single_for_device(jrdev, state->buf_dma, buflen,
++				   DMA_TO_DEVICE);
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
+ 
+@@ -1194,7 +1447,7 @@ static int ahash_update_no_ctx(struct ahash_request *req)
+ 		 * allocate space for base edesc and hw desc commands,
+ 		 * link tables
+ 		 */
+-		edesc = kmalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
++		edesc = kzalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
+ 				sec4_sg_bytes, GFP_DMA | flags);
+ 		if (!edesc) {
+ 			dev_err(jrdev,
+@@ -1230,8 +1483,10 @@ static int ahash_update_no_ctx(struct ahash_request *req)
+ 
+ 		map_seq_out_ptr_ctx(desc, jrdev, state, ctx->ctx_len);
+ 
++		dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma,
++					   sec4_sg_bytes, DMA_TO_DEVICE);
+ #ifdef DEBUG
+-		print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 			       desc_bytes(desc), 1);
+ #endif
+@@ -1253,9 +1508,9 @@ static int ahash_update_no_ctx(struct ahash_request *req)
+ 		*next_buflen = 0;
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "buf@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "buf@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, buf, *buflen, 1);
+-	print_hex_dump(KERN_ERR, "next buf@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "next buf@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, next_buf,
+ 		       *next_buflen, 1);
+ #endif
+@@ -1291,7 +1546,7 @@ static int ahash_finup_no_ctx(struct ahash_request *req)
+ 			 sizeof(struct sec4_sg_entry);
+ 
+ 	/* allocate space for base edesc and hw desc commands, link tables */
+-	edesc = kmalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
++	edesc = kzalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
+ 			sec4_sg_bytes, GFP_DMA | flags);
+ 	if (!edesc) {
+ 		dev_err(jrdev, "could not allocate extended descriptor\n");
+@@ -1323,8 +1578,11 @@ static int ahash_finup_no_ctx(struct ahash_request *req)
+ 	edesc->dst_dma = map_seq_out_ptr_result(desc, jrdev, req->result,
+ 						digestsize);
+ 
++	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
++				   DMA_TO_DEVICE);
++
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
+ 
+@@ -1377,7 +1635,7 @@ static int ahash_update_first(struct ahash_request *req)
+ 		 * allocate space for base edesc and hw desc commands,
+ 		 * link tables
+ 		 */
+-		edesc = kmalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
++		edesc = kzalloc(sizeof(struct ahash_edesc) + DESC_JOB_IO_LEN +
+ 				sec4_sg_bytes, GFP_DMA | flags);
+ 		if (!edesc) {
+ 			dev_err(jrdev,
+@@ -1416,8 +1674,10 @@ static int ahash_update_first(struct ahash_request *req)
+ 
+ 		map_seq_out_ptr_ctx(desc, jrdev, state, ctx->ctx_len);
+ 
++		dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma,
++					   sec4_sg_bytes, DMA_TO_DEVICE);
+ #ifdef DEBUG
+-		print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, desc,
+ 			       desc_bytes(desc), 1);
+ #endif
+@@ -1441,7 +1701,7 @@ static int ahash_update_first(struct ahash_request *req)
+ 		sg_copy(next_buf, req->src, req->nbytes);
+ 	}
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "next buf@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "next buf@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, next_buf,
+ 		       *next_buflen, 1);
+ #endif
+@@ -1463,6 +1723,8 @@ static int ahash_init(struct ahash_request *req)
+ 	state->final = ahash_final_no_ctx;
+ 
+ 	state->current_buf = 0;
++	state->buflen_0 = 0;
++	state->buflen_1 = 0;
+ 
+ 	return 0;
+ }
+@@ -1652,10 +1914,33 @@ static struct caam_hash_template driver_hash[] = {
+ 		.alg_type = OP_ALG_ALGSEL_MD5,
+ 		.alg_op = OP_ALG_ALGSEL_MD5 | OP_ALG_AAI_HMAC,
+ 	},
++	 {
++		.name = "xcbc(aes)",
++		.driver_name = "xcbc-aes-caam",
++		.hmac_name = "xcbc(aes)",
++		.hmac_driver_name = "xcbc-aes-caam",
++		.blocksize = XCBC_MAC_BLOCK_WORDS * 4,
++		.template_ahash = {
++			.init = ahash_init,
++			.update = ahash_update,
++			.final = ahash_final,
++			.finup = ahash_finup,
++			.digest = ahash_digest,
++			.export = ahash_export,
++			.import = ahash_import,
++			.setkey = axcbc_setkey,
++			.halg = {
++				.digestsize = XCBC_MAC_DIGEST_SIZE,
++				},
++			},
++		.alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_XCBC_MAC,
++		.alg_op = OP_ALG_ALGSEL_AES,
++	},
+ };
+ 
+ struct caam_hash_alg {
+ 	struct list_head entry;
++	struct device *ctrldev;
+ 	int alg_type;
+ 	int alg_op;
+ 	struct ahash_alg ahash_alg;
+@@ -1672,6 +1957,7 @@ static int caam_hash_cra_init(struct crypto_tfm *tfm)
+ 	struct caam_hash_alg *caam_hash =
+ 		 container_of(alg, struct caam_hash_alg, ahash_alg);
+ 	struct caam_hash_ctx *ctx = crypto_tfm_ctx(tfm);
++	struct caam_drv_private *priv = dev_get_drvdata(caam_hash->ctrldev);
+ 	/* Sizes for MDHA running digests: MD5, SHA1, 224, 256, 384, 512 */
+ 	static const u8 runninglen[] = { HASH_MSG_LEN + MD5_DIGEST_SIZE,
+ 					 HASH_MSG_LEN + SHA1_DIGEST_SIZE,
+@@ -1679,17 +1965,15 @@ static int caam_hash_cra_init(struct crypto_tfm *tfm)
+ 					 HASH_MSG_LEN + SHA256_DIGEST_SIZE,
+ 					 HASH_MSG_LEN + 64,
+ 					 HASH_MSG_LEN + SHA512_DIGEST_SIZE };
++	int tgt_jr = atomic_inc_return(&priv->tfm_count);
+ 	int ret = 0;
+ 
+ 	/*
+-	 * Get a Job ring from Job Ring driver to ensure in-order
++	 * distribute tfms across job rings to ensure in-order
+ 	 * crypto request processing per tfm
+ 	 */
+-	ctx->jrdev = caam_jr_alloc();
+-	if (IS_ERR(ctx->jrdev)) {
+-		pr_err("Job Ring Device allocation for transform failed\n");
+-		return PTR_ERR(ctx->jrdev);
+-	}
++	ctx->jrdev = priv->jrdev[tgt_jr % priv->total_jobrs];
++
+ 	/* copy descriptor header template value */
+ 	ctx->alg_type = OP_TYPE_CLASS2_ALG | caam_hash->alg_type;
+ 	ctx->alg_op = OP_TYPE_CLASS2_ALG | caam_hash->alg_op;
+@@ -1705,6 +1989,39 @@ static int caam_hash_cra_init(struct crypto_tfm *tfm)
+ 	return ret;
+ }
+ 
++static int caam_axcbc_cra_init(struct crypto_tfm *tfm)
++{
++	struct crypto_ahash *ahash = __crypto_ahash_cast(tfm);
++	struct crypto_alg *base = tfm->__crt_alg;
++	struct hash_alg_common *halg =
++		 container_of(base, struct hash_alg_common, base);
++	struct ahash_alg *alg =
++		 container_of(halg, struct ahash_alg, halg);
++	struct caam_hash_alg *caam_hash =
++		 container_of(alg, struct caam_hash_alg, ahash_alg);
++	struct caam_hash_ctx *ctx = crypto_tfm_ctx(tfm);
++	struct caam_drv_private *priv = dev_get_drvdata(caam_hash->ctrldev);
++	int tgt_jr = atomic_inc_return(&priv->tfm_count);
++	int ret = 0;
++
++	/*
++	 * distribute tfms across job rings to ensure in-order
++	 * crypto request processing per tfm
++	 */
++	ctx->jrdev = priv->jrdev[tgt_jr % priv->total_jobrs];
++
++	/* copy descriptor header template value */
++	ctx->alg_type = OP_TYPE_CLASS1_ALG | caam_hash->alg_type;
++	ctx->alg_op = OP_TYPE_CLASS1_ALG | caam_hash->alg_op;
++
++	crypto_ahash_set_reqsize(__crypto_ahash_cast(tfm),
++				 sizeof(struct caam_hash_state));
++
++	ret = axcbc_set_sh_desc(ahash);
++
++	return ret;
++}
++
+ static void caam_hash_cra_exit(struct crypto_tfm *tfm)
+ {
+ 	struct caam_hash_ctx *ctx = crypto_tfm_ctx(tfm);
+@@ -1732,26 +2049,48 @@ static void caam_hash_cra_exit(struct crypto_tfm *tfm)
+ 	    !dma_mapping_error(ctx->jrdev, ctx->sh_desc_finup_dma))
+ 		dma_unmap_single(ctx->jrdev, ctx->sh_desc_finup_dma,
+ 				 desc_bytes(ctx->sh_desc_finup), DMA_TO_DEVICE);
+-
+-	caam_jr_free(ctx->jrdev);
+ }
+ 
+ static void __exit caam_algapi_hash_exit(void)
+ {
++	struct device_node *dev_node;
++	struct platform_device *pdev;
++	struct device *ctrldev;
++	struct caam_drv_private *priv;
+ 	struct caam_hash_alg *t_alg, *n;
+ 
+-	if (!hash_list.next)
++	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
++	if (!dev_node) {
++		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
++		if (!dev_node)
++			return;
++	}
++
++	pdev = of_find_device_by_node(dev_node);
++	if (!pdev) {
++		of_node_put(dev_node);
+ 		return;
++	}
++
++	ctrldev = &pdev->dev;
++	priv = dev_get_drvdata(ctrldev);
+ 
+-	list_for_each_entry_safe(t_alg, n, &hash_list, entry) {
++	if (!priv->hash_list.next) {
++		of_node_put(dev_node);
++		return;
++	}
++
++	list_for_each_entry_safe(t_alg, n, &priv->hash_list, entry) {
+ 		crypto_unregister_ahash(&t_alg->ahash_alg);
+ 		list_del(&t_alg->entry);
+ 		kfree(t_alg);
+ 	}
++
++	of_node_put(dev_node);
+ }
+ 
+ static struct caam_hash_alg *
+-caam_hash_alloc(struct caam_hash_template *template,
++caam_hash_alloc(struct device *ctrldev, struct caam_hash_template *template,
+ 		bool keyed)
+ {
+ 	struct caam_hash_alg *t_alg;
+@@ -1760,7 +2099,7 @@ caam_hash_alloc(struct caam_hash_template *template,
+ 
+ 	t_alg = kzalloc(sizeof(struct caam_hash_alg), GFP_KERNEL);
+ 	if (!t_alg) {
+-		pr_err("failed to allocate t_alg\n");
++		dev_err(ctrldev, "failed to allocate t_alg\n");
+ 		return ERR_PTR(-ENOMEM);
+ 	}
+ 
+@@ -1780,7 +2119,11 @@ caam_hash_alloc(struct caam_hash_template *template,
+ 			 template->driver_name);
+ 	}
+ 	alg->cra_module = THIS_MODULE;
+-	alg->cra_init = caam_hash_cra_init;
++
++	if (strstr(alg->cra_name, "xcbc") > 0)
++		alg->cra_init = caam_axcbc_cra_init;
++	else
++		alg->cra_init = caam_hash_cra_init;
+ 	alg->cra_exit = caam_hash_cra_exit;
+ 	alg->cra_ctxsize = sizeof(struct caam_hash_ctx);
+ 	alg->cra_priority = CAAM_CRA_PRIORITY;
+@@ -1791,56 +2134,94 @@ caam_hash_alloc(struct caam_hash_template *template,
+ 
+ 	t_alg->alg_type = template->alg_type;
+ 	t_alg->alg_op = template->alg_op;
++	t_alg->ctrldev = ctrldev;
+ 
+ 	return t_alg;
+ }
+ 
+ static int __init caam_algapi_hash_init(void)
+ {
+-	int i = 0, err = 0;
++	struct device_node *dev_node;
++	struct platform_device *pdev;
++	struct device *ctrldev;
++	struct caam_drv_private *priv;
++	int i = 0, err = 0, md_limit = 0, md_inst;
++	u64 cha_inst;
++
++	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
++	if (!dev_node) {
++		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
++		if (!dev_node)
++			return -ENODEV;
++	}
+ 
+-	INIT_LIST_HEAD(&hash_list);
++	pdev = of_find_device_by_node(dev_node);
++	if (!pdev) {
++		of_node_put(dev_node);
++		return -ENODEV;
++	}
++	ctrldev = &pdev->dev;
++	priv = dev_get_drvdata(ctrldev);
++
++	INIT_LIST_HEAD(&priv->hash_list);
++
++	atomic_set(&priv->tfm_count, -1);
++
++	/* register algorithms the device supports */
++	cha_inst = rd_reg64(&priv->ctrl->perfmon.cha_num);
++	md_inst = (cha_inst & CHA_ID_MD_MASK) >> CHA_ID_MD_SHIFT;
++	if (md_inst) {
++		md_limit = SHA512_DIGEST_SIZE;
++		if ((rd_reg64(&priv->ctrl->perfmon.cha_id) & CHA_ID_MD_MASK)
++		     == CHA_ID_MD_LP256) /* LP256 limits digest size */
++			md_limit = SHA256_DIGEST_SIZE;
++	}
+ 
+-	/* register crypto algorithms the device supports */
+ 	for (i = 0; i < ARRAY_SIZE(driver_hash); i++) {
+-		/* TODO: check if h/w supports alg */
+ 		struct caam_hash_alg *t_alg;
+ 
++		/* If no MD instantiated, or MD too small, skip */
++		if ((!md_inst) ||
++		    (driver_hash[i].template_ahash.halg.digestsize >
++		     md_limit))
++			continue;
++
+ 		/* register hmac version */
+-		t_alg = caam_hash_alloc(&driver_hash[i], true);
++		t_alg = caam_hash_alloc(ctrldev, &driver_hash[i], true);
+ 		if (IS_ERR(t_alg)) {
+ 			err = PTR_ERR(t_alg);
+-			pr_warn("%s alg allocation failed\n",
+-				driver_hash[i].driver_name);
++			dev_warn(ctrldev, "%s alg allocation failed\n",
++				 driver_hash[i].driver_name);
+ 			continue;
+ 		}
+ 
+ 		err = crypto_register_ahash(&t_alg->ahash_alg);
+ 		if (err) {
+-			pr_warn("%s alg registration failed\n",
++			dev_warn(ctrldev, "%s alg registration failed\n",
+ 				t_alg->ahash_alg.halg.base.cra_driver_name);
+ 			kfree(t_alg);
+ 		} else
+-			list_add_tail(&t_alg->entry, &hash_list);
++			list_add_tail(&t_alg->entry, &priv->hash_list);
+ 
+ 		/* register unkeyed version */
+-		t_alg = caam_hash_alloc(&driver_hash[i], false);
++		t_alg = caam_hash_alloc(ctrldev, &driver_hash[i], false);
+ 		if (IS_ERR(t_alg)) {
+ 			err = PTR_ERR(t_alg);
+-			pr_warn("%s alg allocation failed\n",
+-				driver_hash[i].driver_name);
++			dev_warn(ctrldev, "%s alg allocation failed\n",
++				 driver_hash[i].driver_name);
+ 			continue;
+ 		}
+ 
+ 		err = crypto_register_ahash(&t_alg->ahash_alg);
+ 		if (err) {
+-			pr_warn("%s alg registration failed\n",
++			dev_warn(ctrldev, "%s alg registration failed\n",
+ 				t_alg->ahash_alg.halg.base.cra_driver_name);
+ 			kfree(t_alg);
+ 		} else
+-			list_add_tail(&t_alg->entry, &hash_list);
++			list_add_tail(&t_alg->entry, &priv->hash_list);
+ 	}
+ 
++	of_node_put(dev_node);
+ 	return err;
+ }
+ 
+diff --git a/drivers/crypto/caam/caamrng.c b/drivers/crypto/caam/caamrng.c
+index 28486b1..795d708 100644
+--- a/drivers/crypto/caam/caamrng.c
++++ b/drivers/crypto/caam/caamrng.c
+@@ -1,7 +1,7 @@
+ /*
+  * caam - Freescale FSL CAAM support for hw_random
+  *
+- * Copyright 2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2011-2013 Freescale Semiconductor, Inc.
+  *
+  * Based on caamalg.c crypto API driver.
+  *
+@@ -76,13 +76,16 @@ struct caam_rng_ctx {
+ 	struct buf_data bufs[2];
+ };
+ 
+-static struct caam_rng_ctx rng_ctx;
++static struct caam_rng_ctx *rng_ctx;
+ 
+ static inline void rng_unmap_buf(struct device *jrdev, struct buf_data *bd)
+ {
+-	if (bd->addr)
++	if (bd->addr) {
++		dma_sync_single_for_cpu(jrdev, bd->addr, RN_BUF_SIZE,
++					DMA_FROM_DEVICE);
+ 		dma_unmap_single(jrdev, bd->addr, RN_BUF_SIZE,
+ 				 DMA_FROM_DEVICE);
++	}
+ }
+ 
+ static inline void rng_unmap_ctx(struct caam_rng_ctx *ctx)
+@@ -137,7 +140,7 @@ static inline int submit_job(struct caam_rng_ctx *ctx, int to_current)
+ 
+ static int caam_read(struct hwrng *rng, void *data, size_t max, bool wait)
+ {
+-	struct caam_rng_ctx *ctx = &rng_ctx;
++	struct caam_rng_ctx *ctx = rng_ctx;
+ 	struct buf_data *bd = &ctx->bufs[ctx->current_buf];
+ 	int next_buf_idx, copied_idx;
+ 	int err;
+@@ -206,6 +209,9 @@ static inline void rng_create_sh_desc(struct caam_rng_ctx *ctx)
+ 
+ 	ctx->sh_desc_dma = dma_map_single(jrdev, desc, desc_bytes(desc),
+ 					  DMA_TO_DEVICE);
++	dma_sync_single_for_device(jrdev, ctx->sh_desc_dma, desc_bytes(desc),
++			       DMA_TO_DEVICE);
++
+ #ifdef DEBUG
+ 	print_hex_dump(KERN_ERR, "rng shdesc@: ", DUMP_PREFIX_ADDRESS, 16, 4,
+ 		       desc, desc_bytes(desc), 1);
+@@ -237,14 +243,57 @@ static void caam_cleanup(struct hwrng *rng)
+ 	struct buf_data *bd;
+ 
+ 	for (i = 0; i < 2; i++) {
+-		bd = &rng_ctx.bufs[i];
++		bd = &rng_ctx->bufs[i];
+ 		if (atomic_read(&bd->empty) == BUF_PENDING)
+ 			wait_for_completion(&bd->filled);
+ 	}
+ 
+-	rng_unmap_ctx(&rng_ctx);
++	rng_unmap_ctx(rng_ctx);
+ }
+ 
++#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_RNG_TEST
++static inline void test_len(struct hwrng *rng, size_t len, bool wait)
++{
++	u8 *buf;
++	int real_len;
++
++	buf = kzalloc(sizeof(u8) * len, GFP_KERNEL);
++	real_len = rng->read(rng, buf, len, wait);
++	if (real_len == 0 && wait)
++		pr_err("WAITING FAILED\n");
++	pr_info("wanted %d bytes, got %d\n", len, real_len);
++	print_hex_dump(KERN_INFO, "random bytes@: ", DUMP_PREFIX_ADDRESS,
++		       16, 4, buf, real_len, 1);
++	kfree(buf);
++}
++
++static inline void test_mode_once(struct hwrng *rng, bool wait)
++{
++#define TEST_CHUNK (RN_BUF_SIZE / 4)
++
++	test_len(rng, TEST_CHUNK, wait);
++	test_len(rng, RN_BUF_SIZE * 2, wait);
++	test_len(rng, RN_BUF_SIZE * 2 - TEST_CHUNK, wait);
++}
++
++static inline void test_mode(struct hwrng *rng, bool wait)
++{
++#define TEST_PASS 1
++	int i;
++
++	for (i = 0; i < TEST_PASS; i++)
++		test_mode_once(rng, wait);
++}
++
++static void self_test(struct hwrng *rng)
++{
++	pr_info("testing without waiting\n");
++	test_mode(rng, false);
++	pr_info("testing with waiting\n");
++	test_mode(rng, true);
++}
++#endif
++
+ static void caam_init_buf(struct caam_rng_ctx *ctx, int buf_id)
+ {
+ 	struct buf_data *bd = &ctx->bufs[buf_id];
+@@ -273,23 +322,44 @@ static struct hwrng caam_rng = {
+ 
+ static void __exit caam_rng_exit(void)
+ {
+-	caam_jr_free(rng_ctx.jrdev);
+ 	hwrng_unregister(&caam_rng);
+ }
+ 
+ static int __init caam_rng_init(void)
+ {
+-	struct device *dev;
+-
+-	dev = caam_jr_alloc();
+-	if (IS_ERR(dev)) {
+-		pr_err("Job Ring Device allocation for transform failed\n");
+-		return PTR_ERR(dev);
++	struct device_node *dev_node;
++	struct platform_device *pdev;
++	struct device *ctrldev;
++	struct caam_drv_private *priv;
++
++	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
++	if (!dev_node) {
++		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
++		if (!dev_node)
++			return -ENODEV;
+ 	}
+ 
+-	caam_init_rng(&rng_ctx, dev);
++	pdev = of_find_device_by_node(dev_node);
++	if (!pdev)
++		return -ENODEV;
++
++	ctrldev = &pdev->dev;
++	priv = dev_get_drvdata(ctrldev);
++	of_node_put(dev_node);
++
++	/* Check RNG present in hardware before registration */
++	if (!(rd_reg64(&priv->ctrl->perfmon.cha_num) & CHA_ID_RNG_MASK))
++		return -ENODEV;
++
++	rng_ctx = kmalloc(sizeof(struct caam_rng_ctx), GFP_KERNEL | GFP_DMA);
++
++	caam_init_rng(rng_ctx, priv->jrdev[0]);
++
++#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_RNG_TEST
++	self_test(&caam_rng);
++#endif
+ 
+-	dev_info(dev, "registering rng-caam\n");
++	dev_info(priv->jrdev[0], "registering rng-caam\n");
+ 	return hwrng_register(&caam_rng);
+ }
+ 
+diff --git a/drivers/crypto/caam/compat.h b/drivers/crypto/caam/compat.h
+index 762aeff..755524d 100644
+--- a/drivers/crypto/caam/compat.h
++++ b/drivers/crypto/caam/compat.h
+@@ -14,6 +14,8 @@
+ #include <linux/hash.h>
+ #include <linux/hw_random.h>
+ #include <linux/of_platform.h>
++#include <linux/of_address.h>
++#include <linux/of_irq.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/io.h>
+ #include <linux/spinlock.h>
+@@ -23,6 +25,10 @@
+ #include <linux/types.h>
+ #include <linux/debugfs.h>
+ #include <linux/circ_buf.h>
++
++#ifdef CONFIG_ARM /* needs the clock control subsystem */
++#include <linux/clk.h>
++#endif
+ #include <net/xfrm.h>
+ 
+ #include <crypto/algapi.h>
+diff --git a/drivers/crypto/caam/ctrl.c b/drivers/crypto/caam/ctrl.c
+index 63fb1af..bbca873 100644
+--- a/drivers/crypto/caam/ctrl.c
++++ b/drivers/crypto/caam/ctrl.c
+@@ -2,12 +2,9 @@
+  * CAAM control-plane driver backend
+  * Controller-level driver, kernel property detection, initialization
+  *
+- * Copyright 2008-2012 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  */
+ 
+-#include <linux/of_address.h>
+-#include <linux/of_irq.h>
+-
+ #include "compat.h"
+ #include "regs.h"
+ #include "intern.h"
+@@ -15,300 +12,149 @@
+ #include "desc_constr.h"
+ #include "error.h"
+ #include "ctrl.h"
++#include "sm.h"
++#include <linux/device.h>
+ 
+-/*
+- * Descriptor to instantiate RNG State Handle 0 in normal mode and
+- * load the JDKEK, TDKEK and TDSK registers
+- */
+-static void build_instantiation_desc(u32 *desc, int handle, int do_sk)
+-{
+-	u32 *jump_cmd, op_flags;
+-
+-	init_job_desc(desc, 0);
+-
+-	op_flags = OP_TYPE_CLASS1_ALG | OP_ALG_ALGSEL_RNG |
+-			(handle << OP_ALG_AAI_SHIFT) | OP_ALG_AS_INIT;
+-
+-	/* INIT RNG in non-test mode */
+-	append_operation(desc, op_flags);
+-
+-	if (!handle && do_sk) {
+-		/*
+-		 * For SH0, Secure Keys must be generated as well
+-		 */
+-
+-		/* wait for done */
+-		jump_cmd = append_jump(desc, JUMP_CLASS_CLASS1);
+-		set_jump_tgt_here(desc, jump_cmd);
+-
+-		/*
+-		 * load 1 to clear written reg:
+-		 * resets the done interrrupt and returns the RNG to idle.
+-		 */
+-		append_load_imm_u32(desc, 1, LDST_SRCDST_WORD_CLRW);
++/* Used to capture the array of job rings */
++struct device **caam_jr_dev;
+ 
+-		/* Initialize State Handle  */
+-		append_operation(desc, OP_TYPE_CLASS1_ALG | OP_ALG_ALGSEL_RNG |
+-				 OP_ALG_AAI_RNG4_SK);
+-	}
+-
+-	append_jump(desc, JUMP_CLASS_CLASS1 | JUMP_TYPE_HALT);
+-}
+-
+-/* Descriptor for deinstantiation of State Handle 0 of the RNG block. */
+-static void build_deinstantiation_desc(u32 *desc, int handle)
+-{
+-	init_job_desc(desc, 0);
+-
+-	/* Uninstantiate State Handle 0 */
+-	append_operation(desc, OP_TYPE_CLASS1_ALG | OP_ALG_ALGSEL_RNG |
+-			 (handle << OP_ALG_AAI_SHIFT) | OP_ALG_AS_INITFINAL);
+-
+-	append_jump(desc, JUMP_CLASS_CLASS1 | JUMP_TYPE_HALT);
+-}
+-
+-/*
+- * run_descriptor_deco0 - runs a descriptor on DECO0, under direct control of
+- *			  the software (no JR/QI used).
+- * @ctrldev - pointer to device
+- * @status - descriptor status, after being run
+- *
+- * Return: - 0 if no error occurred
+- *	   - -ENODEV if the DECO couldn't be acquired
+- *	   - -EAGAIN if an error occurred while executing the descriptor
+- */
+-static inline int run_descriptor_deco0(struct device *ctrldev, u32 *desc,
+-					u32 *status)
++static int caam_remove(struct platform_device *pdev)
+ {
+-	struct caam_drv_private *ctrlpriv = dev_get_drvdata(ctrldev);
++	struct device *ctrldev;
++	struct caam_drv_private *ctrlpriv;
++	struct caam_drv_private_jr *jrpriv;
+ 	struct caam_full __iomem *topregs;
+-	unsigned int timeout = 100000;
+-	u32 deco_dbg_reg, flags;
+-	int i;
++	int ring, ret = 0;
+ 
+-	/* Set the bit to request direct access to DECO0 */
++	ctrldev = &pdev->dev;
++	ctrlpriv = dev_get_drvdata(ctrldev);
+ 	topregs = (struct caam_full __iomem *)ctrlpriv->ctrl;
+-	setbits32(&topregs->ctrl.deco_rq, DECORR_RQD0ENABLE);
+-
+-	while (!(rd_reg32(&topregs->ctrl.deco_rq) & DECORR_DEN0) &&
+-								 --timeout)
+-		cpu_relax();
+ 
+-	if (!timeout) {
+-		dev_err(ctrldev, "failed to acquire DECO 0\n");
+-		clrbits32(&topregs->ctrl.deco_rq, DECORR_RQD0ENABLE);
+-		return -ENODEV;
++	/* shut down JobRs */
++	for (ring = 0; ring < ctrlpriv->total_jobrs; ring++) {
++		ret |= caam_jr_shutdown(ctrlpriv->jrdev[ring]);
++		jrpriv = dev_get_drvdata(ctrlpriv->jrdev[ring]);
++		irq_dispose_mapping(jrpriv->irq);
+ 	}
+ 
+-	for (i = 0; i < desc_len(desc); i++)
+-		wr_reg32(&topregs->deco.descbuf[i], *(desc + i));
+-
+-	flags = DECO_JQCR_WHL;
+-	/*
+-	 * If the descriptor length is longer than 4 words, then the
+-	 * FOUR bit in JRCTRL register must be set.
+-	 */
+-	if (desc_len(desc) >= 4)
+-		flags |= DECO_JQCR_FOUR;
+-
+-	/* Instruct the DECO to execute it */
+-	wr_reg32(&topregs->deco.jr_ctl_hi, flags);
+-
+-	timeout = 10000000;
+-	do {
+-		deco_dbg_reg = rd_reg32(&topregs->deco.desc_dbg);
+-		/*
+-		 * If an error occured in the descriptor, then
+-		 * the DECO status field will be set to 0x0D
+-		 */
+-		if ((deco_dbg_reg & DESC_DBG_DECO_STAT_MASK) ==
+-		    DESC_DBG_DECO_STAT_HOST_ERR)
+-			break;
+-		cpu_relax();
+-	} while ((deco_dbg_reg & DESC_DBG_DECO_STAT_VALID) && --timeout);
++	/* Shut down debug views */
++#ifdef CONFIG_DEBUG_FS
++	debugfs_remove_recursive(ctrlpriv->dfs_root);
++#endif
+ 
+-	*status = rd_reg32(&topregs->deco.op_status_hi) &
+-		  DECO_OP_STATUS_HI_ERR_MASK;
++	/* Unmap controller region */
++	iounmap(&topregs->ctrl);
+ 
+-	/* Mark the DECO as free */
+-	clrbits32(&topregs->ctrl.deco_rq, DECORR_RQD0ENABLE);
++#ifdef CONFIG_ARM
++	/* shut clocks off before finalizing shutdown */
++	clk_disable(ctrlpriv->caam_ipg);
++	clk_disable(ctrlpriv->caam_mem);
++	clk_disable(ctrlpriv->caam_aclk);
++#endif
+ 
+-	if (!timeout)
+-		return -EAGAIN;
++	kfree(ctrlpriv->jrdev);
++	kfree(ctrlpriv);
+ 
+-	return 0;
++	return ret;
+ }
+ 
+ /*
+- * instantiate_rng - builds and executes a descriptor on DECO0,
+- *		     which initializes the RNG block.
+- * @ctrldev - pointer to device
+- * @state_handle_mask - bitmask containing the instantiation status
+- *			for the RNG4 state handles which exist in
+- *			the RNG4 block: 1 if it's been instantiated
+- *			by an external entry, 0 otherwise.
+- * @gen_sk  - generate data to be loaded into the JDKEK, TDKEK and TDSK;
+- *	      Caution: this can be done only once; if the keys need to be
+- *	      regenerated, a POR is required
+- *
+- * Return: - 0 if no error occurred
+- *	   - -ENOMEM if there isn't enough memory to allocate the descriptor
+- *	   - -ENODEV if DECO0 couldn't be acquired
+- *	   - -EAGAIN if an error occurred when executing the descriptor
+- *	      f.i. there was a RNG hardware error due to not "good enough"
+- *	      entropy being aquired.
++ * Descriptor to instantiate RNG State Handle 0 in normal mode and
++ * load the JDKEK, TDKEK and TDSK registers
+  */
+-static int instantiate_rng(struct device *ctrldev, int state_handle_mask,
+-			   int gen_sk)
++static void build_instantiation_desc(u32 *desc)
+ {
+-	struct caam_drv_private *ctrlpriv = dev_get_drvdata(ctrldev);
+-	struct caam_full __iomem *topregs;
+-	struct rng4tst __iomem *r4tst;
+-	u32 *desc, status, rdsta_val;
+-	int ret = 0, sh_idx;
+-
+-	topregs = (struct caam_full __iomem *)ctrlpriv->ctrl;
+-	r4tst = &topregs->ctrl.r4tst[0];
+-
+-	desc = kmalloc(CAAM_CMD_SZ * 7, GFP_KERNEL);
+-	if (!desc)
+-		return -ENOMEM;
+-
+-	for (sh_idx = 0; sh_idx < RNG4_MAX_HANDLES; sh_idx++) {
+-		/*
+-		 * If the corresponding bit is set, this state handle
+-		 * was initialized by somebody else, so it's left alone.
+-		 */
+-		if ((1 << sh_idx) & state_handle_mask)
+-			continue;
+-
+-		/* Create the descriptor for instantiating RNG State Handle */
+-		build_instantiation_desc(desc, sh_idx, gen_sk);
++	u32 *jump_cmd;
+ 
+-		/* Try to run it through DECO0 */
+-		ret = run_descriptor_deco0(ctrldev, desc, &status);
++	init_job_desc(desc, 0);
+ 
+-		/*
+-		 * If ret is not 0, or descriptor status is not 0, then
+-		 * something went wrong. No need to try the next state
+-		 * handle (if available), bail out here.
+-		 * Also, if for some reason, the State Handle didn't get
+-		 * instantiated although the descriptor has finished
+-		 * without any error (HW optimizations for later
+-		 * CAAM eras), then try again.
+-		 */
+-		rdsta_val =
+-			rd_reg32(&topregs->ctrl.r4tst[0].rdsta) & RDSTA_IFMASK;
+-		if (status || !(rdsta_val & (1 << sh_idx)))
+-			ret = -EAGAIN;
+-		if (ret)
+-			break;
++	/* INIT RNG in non-test mode */
++	append_operation(desc, OP_TYPE_CLASS1_ALG | OP_ALG_ALGSEL_RNG |
++			 OP_ALG_AS_INIT);
+ 
+-		dev_info(ctrldev, "Instantiated RNG4 SH%d\n", sh_idx);
+-		/* Clear the contents before recreating the descriptor */
+-		memset(desc, 0x00, CAAM_CMD_SZ * 7);
+-	}
++	/* wait for done */
++	jump_cmd = append_jump(desc, JUMP_CLASS_CLASS1);
++	set_jump_tgt_here(desc, jump_cmd);
+ 
+-	kfree(desc);
++	/*
++	 * load 1 to clear written reg:
++	 * resets the done interrupt and returns the RNG to idle.
++	 */
++	append_load_imm_u32(desc, 1, LDST_SRCDST_WORD_CLRW);
+ 
+-	return ret;
+ }
+ 
+-/*
+- * deinstantiate_rng - builds and executes a descriptor on DECO0,
+- *		       which deinitializes the RNG block.
+- * @ctrldev - pointer to device
+- * @state_handle_mask - bitmask containing the instantiation status
+- *			for the RNG4 state handles which exist in
+- *			the RNG4 block: 1 if it's been instantiated
+- *
+- * Return: - 0 if no error occurred
+- *	   - -ENOMEM if there isn't enough memory to allocate the descriptor
+- *	   - -ENODEV if DECO0 couldn't be acquired
+- *	   - -EAGAIN if an error occurred when executing the descriptor
+- */
+-static int deinstantiate_rng(struct device *ctrldev, int state_handle_mask)
++static void generate_secure_keys_desc(u32 *desc)
+ {
+-	u32 *desc, status;
+-	int sh_idx, ret = 0;
++	/* generate secure keys (non-test) */
++	append_operation(desc, OP_TYPE_CLASS1_ALG | OP_ALG_ALGSEL_RNG |
++					 OP_ALG_RNG4_SK);
++}
+ 
+-	desc = kmalloc(CAAM_CMD_SZ * 3, GFP_KERNEL);
+-	if (!desc)
+-		return -ENOMEM;
++struct instantiate_result {
++	struct completion completion;
++	int err;
++};
+ 
+-	for (sh_idx = 0; sh_idx < RNG4_MAX_HANDLES; sh_idx++) {
+-		/*
+-		 * If the corresponding bit is set, then it means the state
+-		 * handle was initialized by us, and thus it needs to be
+-		 * deintialized as well
+-		 */
+-		if ((1 << sh_idx) & state_handle_mask) {
+-			/*
+-			 * Create the descriptor for deinstantating this state
+-			 * handle
+-			 */
+-			build_deinstantiation_desc(desc, sh_idx);
++static void rng4_init_done(struct device *dev, u32 *desc, u32 err,
++			   void *context)
++{
++	struct instantiate_result *instantiation = context;
+ 
+-			/* Try to run it through DECO0 */
+-			ret = run_descriptor_deco0(ctrldev, desc, &status);
++	if (err) {
++		char tmp[CAAM_ERROR_STR_MAX];
+ 
+-			if (ret || status) {
+-				dev_err(ctrldev,
+-					"Failed to deinstantiate RNG4 SH%d\n",
+-					sh_idx);
+-				break;
+-			}
+-			dev_info(ctrldev, "Deinstantiated RNG4 SH%d\n", sh_idx);
+-		}
++		dev_err(dev, "%08x: %s\n", err, caam_jr_strstatus(tmp, err));
+ 	}
+ 
+-	kfree(desc);
+-
+-	return ret;
++	instantiation->err = err;
++	complete(&instantiation->completion);
+ }
+ 
+-static int caam_remove(struct platform_device *pdev)
++static int instantiate_rng(struct device *jrdev, u32 keys_generated)
+ {
+-	struct device *ctrldev;
+-	struct caam_drv_private *ctrlpriv;
+-	struct caam_full __iomem *topregs;
+-	int ring, ret = 0;
++	struct instantiate_result instantiation;
+ 
+-	ctrldev = &pdev->dev;
+-	ctrlpriv = dev_get_drvdata(ctrldev);
+-	topregs = (struct caam_full __iomem *)ctrlpriv->ctrl;
++	dma_addr_t desc_dma;
++	u32 *desc;
++	int ret;
+ 
+-	/* Remove platform devices for JobRs */
+-	for (ring = 0; ring < ctrlpriv->total_jobrs; ring++) {
+-		if (ctrlpriv->jrpdev[ring])
+-			of_device_unregister(ctrlpriv->jrpdev[ring]);
++	desc = kmalloc(CAAM_CMD_SZ * 6, GFP_KERNEL | GFP_DMA);
++	if (!desc) {
++		dev_err(jrdev, "cannot allocate RNG init descriptor memory\n");
++		return -ENOMEM;
+ 	}
+ 
+-	/* De-initialize RNG state handles initialized by this driver. */
+-	if (ctrlpriv->rng4_sh_init)
+-		deinstantiate_rng(ctrldev, ctrlpriv->rng4_sh_init);
++	build_instantiation_desc(desc);
+ 
+-	/* Shut down debug views */
+-#ifdef CONFIG_DEBUG_FS
+-	debugfs_remove_recursive(ctrlpriv->dfs_root);
+-#endif
++	/* If keys have not been generated, add op code to generate key. */
++	if (!keys_generated)
++		generate_secure_keys_desc(desc);
+ 
+-	/* Unmap controller region */
+-	iounmap(&topregs->ctrl);
++	desc_dma = dma_map_single(jrdev, desc, desc_bytes(desc), DMA_TO_DEVICE);
++	dma_sync_single_for_device(jrdev, desc_dma, desc_bytes(desc),
++				   DMA_TO_DEVICE);
++	init_completion(&instantiation.completion);
++	ret = caam_jr_enqueue(jrdev, desc, rng4_init_done, &instantiation);
++	if (!ret) {
++		wait_for_completion_interruptible(&instantiation.completion);
++		ret = instantiation.err;
++		if (ret)
++			dev_err(jrdev, "unable to instantiate RNG\n");
++	}
+ 
+-	kfree(ctrlpriv->jrpdev);
+-	kfree(ctrlpriv);
++	dma_unmap_single(jrdev, desc_dma, desc_bytes(desc), DMA_TO_DEVICE);
++
++	kfree(desc);
+ 
+ 	return ret;
+ }
+ 
+ /*
+- * kick_trng - sets the various parameters for enabling the initialization
+- *	       of the RNG4 block in CAAM
+- * @pdev - pointer to the platform device
+- * @ent_delay - Defines the length (in system clocks) of each entropy sample.
++ * By default, the TRNG runs for 200 clocks per sample;
++ * 1600 clocks per sample generates better entropy.
+  */
+-static void kick_trng(struct platform_device *pdev, int ent_delay)
++static void kick_trng(struct platform_device *pdev)
+ {
+ 	struct device *ctrldev = &pdev->dev;
+ 	struct caam_drv_private *ctrlpriv = dev_get_drvdata(ctrldev);
+@@ -319,33 +165,18 @@ static void kick_trng(struct platform_device *pdev, int ent_delay)
+ 	topregs = (struct caam_full __iomem *)ctrlpriv->ctrl;
+ 	r4tst = &topregs->ctrl.r4tst[0];
+ 
++	val = rd_reg32(&r4tst->rtmctl);
+ 	/* put RNG4 into program mode */
+ 	setbits32(&r4tst->rtmctl, RTMCTL_PRGM);
+-
+-	/*
+-	 * Performance-wise, it does not make sense to
+-	 * set the delay to a value that is lower
+-	 * than the last one that worked (i.e. the state handles
+-	 * were instantiated properly. Thus, instead of wasting
+-	 * time trying to set the values controlling the sample
+-	 * frequency, the function simply returns.
+-	 */
+-	val = (rd_reg32(&r4tst->rtsdctl) & RTSDCTL_ENT_DLY_MASK)
+-	      >> RTSDCTL_ENT_DLY_SHIFT;
+-	if (ent_delay <= val) {
+-		/* put RNG4 into run mode */
+-		clrbits32(&r4tst->rtmctl, RTMCTL_PRGM);
+-		return;
+-	}
+-
++	/* Set clocks per sample to the default, and divider to zero */
+ 	val = rd_reg32(&r4tst->rtsdctl);
+ 	val = (val & ~RTSDCTL_ENT_DLY_MASK) |
+-	      (ent_delay << RTSDCTL_ENT_DLY_SHIFT);
++	       (RNG4_ENT_CLOCKS_SAMPLE << RTSDCTL_ENT_DLY_SHIFT);
+ 	wr_reg32(&r4tst->rtsdctl, val);
+-	/* min. freq. count, equal to 1/4 of the entropy sample length */
+-	wr_reg32(&r4tst->rtfrqmin, ent_delay >> 2);
+-	/* max. freq. count, equal to 8 times the entropy sample length */
+-	wr_reg32(&r4tst->rtfrqmax, ent_delay << 3);
++	/* min. freq. count */
++	wr_reg32(&r4tst->rtfrqmin, RNG4_ENT_CLOCKS_SAMPLE / 4);
++	/* max. freq. count */
++	wr_reg32(&r4tst->rtfrqmax, RNG4_ENT_CLOCKS_SAMPLE * 8);
+ 	/* put RNG4 into run mode */
+ 	clrbits32(&r4tst->rtmctl, RTMCTL_PRGM);
+ }
+@@ -370,7 +201,20 @@ int caam_get_era(u64 caam_id)
+ 		{0x0A14, 1, 3},
+ 		{0x0A14, 2, 4},
+ 		{0x0A16, 1, 4},
+-		{0x0A11, 1, 4}
++		{0x0A11, 1, 4},
++		{0x0A10, 3, 4},
++		{0x0A18, 1, 4},
++		{0x0A11, 2, 5},
++		{0x0A12, 2, 5},
++		{0x0A13, 1, 5},
++		{0x0A1C, 1, 5},
++		{0x0A12, 4, 6},
++		{0x0A13, 2, 6},
++		{0x0A16, 2, 6},
++		{0x0A18, 2, 6},
++		{0x0A1A, 1, 6},
++		{0x0A1C, 2, 6},
++		{0x0A17, 1, 6}
+ 	};
+ 	int i;
+ 
+@@ -383,20 +227,32 @@ int caam_get_era(u64 caam_id)
+ }
+ EXPORT_SYMBOL(caam_get_era);
+ 
++/*
++ * Return a job ring device.  This is available so outside
++ * entities can gain direct access to the job ring.  For now,
++ * this function returns the first job ring (at index 0).
++ */
++struct device *caam_get_jrdev(void)
++{
++	return caam_jr_dev[0];
++}
++EXPORT_SYMBOL(caam_get_jrdev);
++
++
+ /* Probe routine for CAAM top (controller) level */
+ static int caam_probe(struct platform_device *pdev)
+ {
+-	int ret, ring, rspec, gen_sk, ent_delay = RTSDCTL_ENT_DLY_MIN;
++	int ret, ring, rspec;
+ 	u64 caam_id;
+ 	struct device *dev;
+ 	struct device_node *nprop, *np;
+ 	struct caam_ctrl __iomem *ctrl;
+ 	struct caam_full __iomem *topregs;
++	struct snvs_full __iomem *snvsregs;
+ 	struct caam_drv_private *ctrlpriv;
+ #ifdef CONFIG_DEBUG_FS
+ 	struct caam_perfmon *perfmon;
+ #endif
+-	u64 cha_vid;
+ 
+ 	ctrlpriv = kzalloc(sizeof(struct caam_drv_private), GFP_KERNEL);
+ 	if (!ctrlpriv)
+@@ -420,7 +276,91 @@ static int caam_probe(struct platform_device *pdev)
+ 	topregs = (struct caam_full __iomem *)ctrl;
+ 
+ 	/* Get the IRQ of the controller (for security violations only) */
+-	ctrlpriv->secvio_irq = irq_of_parse_and_map(nprop, 0);
++	ctrlpriv->secvio_irq = of_irq_to_resource(nprop, 0, NULL);
++
++	/* Get SNVS register Page */
++	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-caam-snvs");
++
++	if (!np)
++		return -ENODEV;
++
++	snvsregs = of_iomap(np, 0);
++	ctrlpriv->snvs = snvsregs;
++	/* Get CAAM-SM node and of_iomap() and save */
++	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-caam-sm");
++
++	if (!np)
++		return -ENODEV;
++
++	ctrlpriv->sm_base = of_iomap(np, 0);
++	ctrlpriv->sm_size = 0x3fff;
++
++/*
++ * ARM targets tend to have clock control subsystems that can
++ * enable/disable clocking to our device. Turn clocking on to proceed
++ */
++#ifdef CONFIG_ARM
++	ctrlpriv->caam_ipg = devm_clk_get(&ctrlpriv->pdev->dev, "caam_ipg");
++	if (IS_ERR(ctrlpriv->caam_ipg)) {
++		ret = PTR_ERR(ctrlpriv->caam_ipg);
++		dev_err(&ctrlpriv->pdev->dev,
++			"can't identify CAAM ipg clk: %d\n", ret);
++		return -ENODEV;
++	}
++	ctrlpriv->caam_mem = devm_clk_get(&ctrlpriv->pdev->dev, "caam_mem");
++	if (IS_ERR(ctrlpriv->caam_mem)) {
++		ret = PTR_ERR(ctrlpriv->caam_mem);
++		dev_err(&ctrlpriv->pdev->dev,
++			"can't identify CAAM secure mem clk: %d\n", ret);
++		return -ENODEV;
++	}
++	ctrlpriv->caam_aclk = devm_clk_get(&ctrlpriv->pdev->dev, "caam_aclk");
++	if (IS_ERR(ctrlpriv->caam_aclk)) {
++		ret = PTR_ERR(ctrlpriv->caam_aclk);
++		dev_err(&ctrlpriv->pdev->dev,
++			"can't identify CAAM aclk clk: %d\n", ret);
++		return -ENODEV;
++	}
++
++	ret = clk_prepare(ctrlpriv->caam_ipg);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "can't prepare CAAM ipg clock: %d\n", ret);
++		return -ENODEV;
++	}
++	ret = clk_prepare(ctrlpriv->caam_mem);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "can't prepare CAAM secure mem clock: %d\n", ret);
++		return -ENODEV;
++	}
++	ret = clk_prepare(ctrlpriv->caam_aclk);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "can't prepare CAAM aclk clock: %d\n", ret);
++		return -ENODEV;
++	}
++
++	ret = clk_enable(ctrlpriv->caam_ipg);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "can't enable CAAM ipg clock: %d\n", ret);
++		return -ENODEV;
++	}
++	ret = clk_enable(ctrlpriv->caam_mem);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "can't enable CAAM secure mem clock: %d\n", ret);
++		return -ENODEV;
++	}
++	ret = clk_enable(ctrlpriv->caam_aclk);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "can't enable CAAM aclk clock: %d\n", ret);
++		return -ENODEV;
++	}
++
++	pr_debug("%s caam_ipg clock:%d\n", __func__,
++		(int)clk_get_rate(ctrlpriv->caam_ipg));
++	pr_debug("%s caam_mem clock:%d\n", __func__,
++		(int)clk_get_rate(ctrlpriv->caam_mem));
++	pr_debug("%s caam_aclk clock:%d\n", __func__,
++		(int)clk_get_rate(ctrlpriv->caam_aclk));
++#endif
+ 
+ 	/*
+ 	 * Enable DECO watchdogs and, if this is a PHYS_ADDR_T_64BIT kernel,
+@@ -429,8 +369,24 @@ static int caam_probe(struct platform_device *pdev)
+ 	setbits32(&topregs->ctrl.mcr, MCFGR_WDENABLE |
+ 		  (sizeof(dma_addr_t) == sizeof(u64) ? MCFGR_LONG_PTR : 0));
+ 
++#ifdef CONFIG_ARCH_MX6
++	/*
++	 * ERRATA:  mx6 devices have an issue wherein AXI bus transactions
++	 * may not occur in the correct order. This isn't a problem running
++	 * single descriptors, but can be if running multiple concurrent
++	 * descriptors. Reworking the driver to throttle to single requests
++	 * is impractical, thus the workaround is to limit the AXI pipeline
++	 * to a depth of 1 (from it's default of 4) to preclude this situation
++	 * from occurring.
++	 */
++	wr_reg32(&topregs->ctrl.mcr,
++		 (rd_reg32(&topregs->ctrl.mcr) & ~(MCFGR_AXIPIPE_MASK)) |
++		 ((1 << MCFGR_AXIPIPE_SHIFT) & MCFGR_AXIPIPE_MASK));
++#endif
++
++	/* Set DMA masks according to platform ranging */
+ 	if (sizeof(dma_addr_t) == sizeof(u64))
+-		if (of_device_is_compatible(nprop, "fsl,sec-v5.0"))
++		if (of_device_is_compatible(nprop, "fsl,sec-v4.0"))
+ 			dma_set_mask(dev, DMA_BIT_MASK(40));
+ 		else
+ 			dma_set_mask(dev, DMA_BIT_MASK(36));
+@@ -451,9 +407,8 @@ static int caam_probe(struct platform_device *pdev)
+ 			rspec++;
+ 	}
+ 
+-	ctrlpriv->jrpdev = kzalloc(sizeof(struct platform_device *) * rspec,
+-								GFP_KERNEL);
+-	if (ctrlpriv->jrpdev == NULL) {
++	ctrlpriv->jrdev = kzalloc(sizeof(struct device *) * rspec, GFP_KERNEL);
++	if (ctrlpriv->jrdev == NULL) {
+ 		iounmap(&topregs->ctrl);
+ 		return -ENOMEM;
+ 	}
+@@ -461,23 +416,35 @@ static int caam_probe(struct platform_device *pdev)
+ 	ring = 0;
+ 	ctrlpriv->total_jobrs = 0;
+ 	for_each_compatible_node(np, NULL, "fsl,sec-v4.0-job-ring") {
+-		ctrlpriv->jrpdev[ring] =
+-				of_platform_device_create(np, NULL, dev);
+-		if (!ctrlpriv->jrpdev[ring]) {
+-			pr_warn("JR%d Platform device creation error\n", ring);
+-			continue;
++		ret = caam_jr_probe(pdev, np, ring);
++		if (ret < 0) {
++			/*
++			 * Job ring not found, error out.  At some
++			 * point, we should enhance job ring handling
++			 * to allow for non-consecutive job rings to
++			 * be found.
++			 */
++			pr_err("fsl,sec-v4.0-job-ring not found ");
++			pr_err("(ring %d)\n", ring);
++			return ret;
+ 		}
+ 		ctrlpriv->total_jobrs++;
+ 		ring++;
+ 	}
++
+ 	if (!ring) {
+ 		for_each_compatible_node(np, NULL, "fsl,sec4.0-job-ring") {
+-			ctrlpriv->jrpdev[ring] =
+-				of_platform_device_create(np, NULL, dev);
+-			if (!ctrlpriv->jrpdev[ring]) {
+-				pr_warn("JR%d Platform device creation error\n",
+-					ring);
+-				continue;
++			ret = caam_jr_probe(pdev, np, ring);
++			if (ret < 0) {
++				/*
++				 * Job ring not found, error out.  At some
++				 * point, we should enhance job ring handling
++				 * to allow for non-consecutive job rings to
++				 * be found.
++				 */
++				pr_err("fsl,sec4.0-job-ring not found ");
++				pr_err("(ring %d)\n", ring);
++				return ret;
+ 			}
+ 			ctrlpriv->total_jobrs++;
+ 			ring++;
+@@ -500,66 +467,48 @@ static int caam_probe(struct platform_device *pdev)
+ 		return -ENOMEM;
+ 	}
+ 
+-	cha_vid = rd_reg64(&topregs->ctrl.perfmon.cha_id);
+-
+ 	/*
+-	 * If SEC has RNG version >= 4 and RNG state handle has not been
+-	 * already instantiated, do RNG instantiation
++	 * RNG4 based SECs (v5+ | >= i.MX6) need special initialization prior
++	 * to executing any descriptors. If there's a problem with init,
++	 * remove other subsystems and return; internal padding functions
++	 * cannot run without an RNG. This procedure assumes a single RNG4
++	 * instance.
+ 	 */
+-	if ((cha_vid & CHA_ID_RNG_MASK) >> CHA_ID_RNG_SHIFT >= 4) {
+-		ctrlpriv->rng4_sh_init =
+-			rd_reg32(&topregs->ctrl.r4tst[0].rdsta);
++	if ((rd_reg64(&topregs->ctrl.perfmon.cha_id) & CHA_ID_RNG_MASK)
++	    == CHA_ID_RNG_4) {
++		struct rng4tst __iomem *r4tst;
++		u32 rdsta, rng_if, rng_skvn;
++
+ 		/*
+-		 * If the secure keys (TDKEK, JDKEK, TDSK), were already
+-		 * generated, signal this to the function that is instantiating
+-		 * the state handles. An error would occur if RNG4 attempts
+-		 * to regenerate these keys before the next POR.
++		 * Check to see if the RNG has already been instantiated.
++		 * If either the state 0 or 1 instantiated flags are set,
++		 * then don't continue on and try to instantiate the RNG
++		 * again.
+ 		 */
+-		gen_sk = ctrlpriv->rng4_sh_init & RDSTA_SKVN ? 0 : 1;
+-		ctrlpriv->rng4_sh_init &= RDSTA_IFMASK;
+-		do {
+-			int inst_handles =
+-				rd_reg32(&topregs->ctrl.r4tst[0].rdsta) &
+-								RDSTA_IFMASK;
+-			/*
+-			 * If either SH were instantiated by somebody else
+-			 * (e.g. u-boot) then it is assumed that the entropy
+-			 * parameters are properly set and thus the function
+-			 * setting these (kick_trng(...)) is skipped.
+-			 * Also, if a handle was instantiated, do not change
+-			 * the TRNG parameters.
+-			 */
+-			if (!(ctrlpriv->rng4_sh_init || inst_handles)) {
+-				kick_trng(pdev, ent_delay);
+-				ent_delay += 400;
++		r4tst = &topregs->ctrl.r4tst[0];
++		rdsta = rd_reg32(&r4tst->rdsta); /* Read RDSTA register */
++
++		/* Check IF bit for non-deterministic instantiation */
++		rng_if = rdsta & RDSTA_IF;
++
++		/* Check SKVN bit for non-deterministic key generation */
++		rng_skvn = rdsta & RDSTA_SKVN;
++		if (!rng_if) {
++			kick_trng(pdev);
++			ret = instantiate_rng(ctrlpriv->jrdev[0], rng_skvn);
++			if (ret) {
++				caam_remove(pdev);
++				return -ENODEV;
+ 			}
+-			/*
+-			 * if instantiate_rng(...) fails, the loop will rerun
+-			 * and the kick_trng(...) function will modfiy the
+-			 * upper and lower limits of the entropy sampling
+-			 * interval, leading to a sucessful initialization of
+-			 * the RNG.
+-			 */
+-			ret = instantiate_rng(dev, inst_handles,
+-					      gen_sk);
+-		} while ((ret == -EAGAIN) && (ent_delay < RTSDCTL_ENT_DLY_MAX));
+-		if (ret) {
+-			dev_err(dev, "failed to instantiate RNG");
+-			caam_remove(pdev);
+-			return ret;
++			ctrlpriv->rng_inst++;
+ 		}
+-		/*
+-		 * Set handles init'ed by this module as the complement of the
+-		 * already initialized ones
+-		 */
+-		ctrlpriv->rng4_sh_init = ~ctrlpriv->rng4_sh_init & RDSTA_IFMASK;
+-
+-		/* Enable RDB bit so that RNG works faster */
+-		setbits32(&topregs->ctrl.scfgr, SCFGR_RDBENABLE);
+ 	}
+ 
+ 	/* NOTE: RTIC detection ought to go here, around Si time */
+ 
++	/* Initialize queue allocator lock */
++	spin_lock_init(&ctrlpriv->jr_alloc_lock);
++
+ 	caam_id = rd_reg64(&topregs->ctrl.perfmon.caam_id);
+ 
+ 	/* Report "alive" for developer to see */
+diff --git a/drivers/crypto/caam/desc.h b/drivers/crypto/caam/desc.h
+index 7e4500f..74bad41 100644
+--- a/drivers/crypto/caam/desc.h
++++ b/drivers/crypto/caam/desc.h
+@@ -2,19 +2,35 @@
+  * CAAM descriptor composition header
+  * Definitions to support CAAM descriptor instruction generation
+  *
+- * Copyright 2008-2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  */
+ 
+ #ifndef DESC_H
+ #define DESC_H
+ 
++/*
++ * 16-byte hardware scatter/gather table
++ * An 8-byte table exists in the hardware spec, but has never been
++ * implemented to date. The 8/16 option is selected at RTL-compile-time.
++ * and this selection is visible in the Compile Time Parameters Register
++ */
++
++#define SEC4_SG_LEN_EXT		0x80000000	/* Entry points to table */
++#define SEC4_SG_LEN_FIN		0x40000000	/* Last ent in table */
++#define SEC4_SG_BPID_MASK	0x000000ff
++#define SEC4_SG_BPID_SHIFT	16
++#define SEC4_SG_LEN_MASK	0x3fffffff	/* Excludes EXT and FINAL */
++#define SEC4_SG_OFFS_MASK	0x00001fff
++
+ struct sec4_sg_entry {
++#ifdef CONFIG_64BIT
+ 	u64 ptr;
+-#define SEC4_SG_LEN_FIN 0x40000000
+-#define SEC4_SG_LEN_EXT 0x80000000
++#else
++	u32 reserved;
++	u32 ptr;
++#endif
+ 	u32 len;
+-	u8 reserved;
+-	u8 buf_pool_id;
++	u16 buf_pool_id;
+ 	u16 offset;
+ };
+ 
+@@ -231,12 +247,7 @@ struct sec4_sg_entry {
+ #define LDST_SRCDST_WORD_PKHA_B_SZ	(0x11 << LDST_SRCDST_SHIFT)
+ #define LDST_SRCDST_WORD_PKHA_N_SZ	(0x12 << LDST_SRCDST_SHIFT)
+ #define LDST_SRCDST_WORD_PKHA_E_SZ	(0x13 << LDST_SRCDST_SHIFT)
+-#define LDST_SRCDST_WORD_CLASS_CTX	(0x20 << LDST_SRCDST_SHIFT)
+ #define LDST_SRCDST_WORD_DESCBUF	(0x40 << LDST_SRCDST_SHIFT)
+-#define LDST_SRCDST_WORD_DESCBUF_JOB	(0x41 << LDST_SRCDST_SHIFT)
+-#define LDST_SRCDST_WORD_DESCBUF_SHARED	(0x42 << LDST_SRCDST_SHIFT)
+-#define LDST_SRCDST_WORD_DESCBUF_JOB_WE	(0x45 << LDST_SRCDST_SHIFT)
+-#define LDST_SRCDST_WORD_DESCBUF_SHARED_WE (0x46 << LDST_SRCDST_SHIFT)
+ #define LDST_SRCDST_WORD_INFO_FIFO	(0x7a << LDST_SRCDST_SHIFT)
+ 
+ /* Offset in source/destination */
+@@ -371,7 +382,6 @@ struct sec4_sg_entry {
+ #define FIFOLD_TYPE_LAST2FLUSH1 (0x05 << FIFOLD_TYPE_SHIFT)
+ #define FIFOLD_TYPE_LASTBOTH	(0x06 << FIFOLD_TYPE_SHIFT)
+ #define FIFOLD_TYPE_LASTBOTHFL	(0x07 << FIFOLD_TYPE_SHIFT)
+-#define FIFOLD_TYPE_NOINFOFIFO	(0x0F << FIFOLD_TYPE_SHIFT)
+ 
+ #define FIFOLDST_LEN_MASK	0xffff
+ #define FIFOLDST_EXT_LEN_MASK	0xffffffff
+@@ -1093,6 +1103,23 @@ struct sec4_sg_entry {
+ #define OP_PCL_PKPROT_ECC			 0x0002
+ #define OP_PCL_PKPROT_F2M			 0x0001
+ 
++/* Blob protocol protinfo bits */
++#define OP_PCL_BLOB_TK			0x0200
++#define OP_PCL_BLOB_EKT			0x0100
++
++#define OP_PCL_BLOB_K2KR_MEM		0x0000
++#define OP_PCL_BLOB_K2KR_C1KR		0x0010
++#define OP_PCL_BLOB_K2KR_C2KR		0x0030
++#define OP_PCL_BLOB_K2KR_AFHAS		0x0050
++#define OP_PCL_BLOB_K2KR_C2KR_SPLIT	0x0070
++
++#define OP_PCL_BLOB_PTXT_SECMEM		0x0008
++#define OP_PCL_BLOB_BLACK		0x0004
++
++#define OP_PCL_BLOB_FMT_NORMAL		0x0000
++#define OP_PCL_BLOB_FMT_MSTR		0x0002
++#define OP_PCL_BLOB_FMT_TEST		0x0003
++
+ /* For non-protocol/alg-only op commands */
+ #define OP_ALG_TYPE_SHIFT	24
+ #define OP_ALG_TYPE_MASK	(0x7 << OP_ALG_TYPE_SHIFT)
+@@ -1155,15 +1182,8 @@ struct sec4_sg_entry {
+ 
+ /* randomizer AAI set */
+ #define OP_ALG_AAI_RNG		(0x00 << OP_ALG_AAI_SHIFT)
+-#define OP_ALG_AAI_RNG_NZB	(0x10 << OP_ALG_AAI_SHIFT)
+-#define OP_ALG_AAI_RNG_OBP	(0x20 << OP_ALG_AAI_SHIFT)
+-
+-/* RNG4 AAI set */
+-#define OP_ALG_AAI_RNG4_SH_0	(0x00 << OP_ALG_AAI_SHIFT)
+-#define OP_ALG_AAI_RNG4_SH_1	(0x01 << OP_ALG_AAI_SHIFT)
+-#define OP_ALG_AAI_RNG4_PS	(0x40 << OP_ALG_AAI_SHIFT)
+-#define OP_ALG_AAI_RNG4_AI	(0x80 << OP_ALG_AAI_SHIFT)
+-#define OP_ALG_AAI_RNG4_SK	(0x100 << OP_ALG_AAI_SHIFT)
++#define OP_ALG_AAI_RNG_NOZERO	(0x10 << OP_ALG_AAI_SHIFT)
++#define OP_ALG_AAI_RNG_ODD	(0x20 << OP_ALG_AAI_SHIFT)
+ 
+ /* hmac/smac AAI set */
+ #define OP_ALG_AAI_HASH		(0x00 << OP_ALG_AAI_SHIFT)
+@@ -1185,6 +1205,12 @@ struct sec4_sg_entry {
+ #define OP_ALG_AAI_GSM		(0x10 << OP_ALG_AAI_SHIFT)
+ #define OP_ALG_AAI_EDGE		(0x20 << OP_ALG_AAI_SHIFT)
+ 
++/* RNG4 set */
++#define OP_ALG_RNG4_SHIFT	4
++#define OP_ALG_RNG4_MASK	(0x1f3 << OP_ALG_RNG4_SHIFT)
++
++#define OP_ALG_RNG4_SK		(0x100 << OP_ALG_RNG4_SHIFT)
++
+ #define OP_ALG_AS_SHIFT		2
+ #define OP_ALG_AS_MASK		(0x3 << OP_ALG_AS_SHIFT)
+ #define OP_ALG_AS_UPDATE	(0 << OP_ALG_AS_SHIFT)
+@@ -1301,10 +1327,10 @@ struct sec4_sg_entry {
+ #define SQOUT_SGF	0x01000000
+ 
+ /* Appends to a previous pointer */
+-#define SQOUT_PRE	SQIN_PRE
++#define SQOUT_PRE	0x00800000
+ 
+ /* Restore sequence with pointer/length */
+-#define SQOUT_RTO	 SQIN_RTO
++#define SQOUT_RTO	0x00200000
+ 
+ /* Use extended length following pointer */
+ #define SQOUT_EXT	0x00400000
+@@ -1366,7 +1392,6 @@ struct sec4_sg_entry {
+ #define MOVE_DEST_MATH3		(0x07 << MOVE_DEST_SHIFT)
+ #define MOVE_DEST_CLASS1INFIFO	(0x08 << MOVE_DEST_SHIFT)
+ #define MOVE_DEST_CLASS2INFIFO	(0x09 << MOVE_DEST_SHIFT)
+-#define MOVE_DEST_INFIFO_NOINFO (0x0a << MOVE_DEST_SHIFT)
+ #define MOVE_DEST_PK_A		(0x0c << MOVE_DEST_SHIFT)
+ #define MOVE_DEST_CLASS1KEY	(0x0d << MOVE_DEST_SHIFT)
+ #define MOVE_DEST_CLASS2KEY	(0x0e << MOVE_DEST_SHIFT)
+@@ -1419,7 +1444,6 @@ struct sec4_sg_entry {
+ #define MATH_SRC0_REG2		(0x02 << MATH_SRC0_SHIFT)
+ #define MATH_SRC0_REG3		(0x03 << MATH_SRC0_SHIFT)
+ #define MATH_SRC0_IMM		(0x04 << MATH_SRC0_SHIFT)
+-#define MATH_SRC0_DPOVRD	(0x07 << MATH_SRC0_SHIFT)
+ #define MATH_SRC0_SEQINLEN	(0x08 << MATH_SRC0_SHIFT)
+ #define MATH_SRC0_SEQOUTLEN	(0x09 << MATH_SRC0_SHIFT)
+ #define MATH_SRC0_VARSEQINLEN	(0x0a << MATH_SRC0_SHIFT)
+@@ -1434,7 +1458,6 @@ struct sec4_sg_entry {
+ #define MATH_SRC1_REG2		(0x02 << MATH_SRC1_SHIFT)
+ #define MATH_SRC1_REG3		(0x03 << MATH_SRC1_SHIFT)
+ #define MATH_SRC1_IMM		(0x04 << MATH_SRC1_SHIFT)
+-#define MATH_SRC1_DPOVRD	(0x07 << MATH_SRC0_SHIFT)
+ #define MATH_SRC1_INFIFO	(0x0a << MATH_SRC1_SHIFT)
+ #define MATH_SRC1_OUTFIFO	(0x0b << MATH_SRC1_SHIFT)
+ #define MATH_SRC1_ONE		(0x0c << MATH_SRC1_SHIFT)
+@@ -1610,13 +1633,28 @@ struct sec4_sg_entry {
+ #define NFIFOENTRY_PLEN_SHIFT	0
+ #define NFIFOENTRY_PLEN_MASK	(0xFF << NFIFOENTRY_PLEN_SHIFT)
+ 
+-/* Append Load Immediate Command */
+-#define FD_CMD_APPEND_LOAD_IMMEDIATE			0x80000000
++/*
++ * PDB internal definitions
++ */
+ 
+-/* Set SEQ LIODN equal to the Non-SEQ LIODN for the job */
+-#define FD_CMD_SET_SEQ_LIODN_EQUAL_NONSEQ_LIODN		0x40000000
++/* IPSec ESP CBC Encap/Decap Options */
++#define PDBOPTS_ESPCBC_ARSNONE	0x00	/* no antireplay window	*/
++#define PDBOPTS_ESPCBC_ARS32	0x40	/* 32-entry antireplay window */
++#define PDBOPTS_ESPCBC_ARS64	0xc0	/* 64-entry antireplay window */
++#define PDBOPTS_ESPCBC_IVSRC	0x20	/* IV comes from internal random gen */
++#define PDBOPTS_ESPCBC_ESN	0x10	/* extended sequence included */
++#define PDBOPTS_ESPCBC_OUTFMT	0x08	/* output only decapsulation (decap) */
++#define PDBOPTS_ESPCBC_IPHDRSRC 0x08	/* IP header comes from PDB (encap) */
++#define PDBOPTS_ESPCBC_INCIPHDR 0x04	/* Prepend IP header to output frame */
++#define PDBOPTS_ESPCBC_IPVSN	0x02	/* process IPv6 header */
++#define PDBOPTS_ESPCBC_TUNNEL	0x01	/* tunnel mode next-header byte */
++
++#define ARC4_BLOCK_SIZE       1
++#define ARC4_MAX_KEY_SIZE     256
++#define ARC4_MIN_KEY_SIZE     1
++
++#define XCBC_MAC_DIGEST_SIZE  16
++#define XCBC_MAC_BLOCK_WORDS  16
+ 
+-/* Frame Descriptor Command for Replacement Job Descriptor */
+-#define FD_CMD_REPLACE_JOB_DESC				0x20000000
+ 
+ #endif /* DESC_H */
+diff --git a/drivers/crypto/caam/desc_constr.h b/drivers/crypto/caam/desc_constr.h
+index cd5f678..c85c1f0 100644
+--- a/drivers/crypto/caam/desc_constr.h
++++ b/drivers/crypto/caam/desc_constr.h
+@@ -10,7 +10,6 @@
+ #define CAAM_CMD_SZ sizeof(u32)
+ #define CAAM_PTR_SZ sizeof(dma_addr_t)
+ #define CAAM_DESC_BYTES_MAX (CAAM_CMD_SZ * MAX_CAAM_DESCSIZE)
+-#define DESC_JOB_IO_LEN (CAAM_CMD_SZ * 5 + CAAM_PTR_SZ * 3)
+ 
+ #ifdef DEBUG
+ #define PRINT_POS do { printk(KERN_DEBUG "%02d: %s\n", desc_len(desc),\
+@@ -111,26 +110,6 @@ static inline void append_cmd(u32 *desc, u32 command)
+ 	(*desc)++;
+ }
+ 
+-#define append_u32 append_cmd
+-
+-static inline void append_u64(u32 *desc, u64 data)
+-{
+-	u32 *offset = desc_end(desc);
+-
+-	*offset = upper_32_bits(data);
+-	*(++offset) = lower_32_bits(data);
+-
+-	(*desc) += 2;
+-}
+-
+-/* Write command without affecting header, and return pointer to next word */
+-static inline u32 *write_cmd(u32 *desc, u32 command)
+-{
+-	*desc = command;
+-
+-	return desc + 1;
+-}
+-
+ static inline void append_cmd_ptr(u32 *desc, dma_addr_t ptr, int len,
+ 				  u32 command)
+ {
+@@ -143,8 +122,7 @@ static inline void append_cmd_ptr_extlen(u32 *desc, dma_addr_t ptr,
+ 					 unsigned int len, u32 command)
+ {
+ 	append_cmd(desc, command);
+-	if (!(command & (SQIN_RTO | SQIN_PRE)))
+-		append_ptr(desc, ptr);
++	append_ptr(desc, ptr);
+ 	append_cmd(desc, len);
+ }
+ 
+@@ -198,36 +176,17 @@ static inline void append_##cmd(u32 *desc, dma_addr_t ptr, unsigned int len, \
+ }
+ APPEND_CMD_PTR(key, KEY)
+ APPEND_CMD_PTR(load, LOAD)
++APPEND_CMD_PTR(store, STORE)
+ APPEND_CMD_PTR(fifo_load, FIFO_LOAD)
+ APPEND_CMD_PTR(fifo_store, FIFO_STORE)
+ 
+-static inline void append_store(u32 *desc, dma_addr_t ptr, unsigned int len,
+-				u32 options)
+-{
+-	u32 cmd_src;
+-
+-	cmd_src = options & LDST_SRCDST_MASK;
+-
+-	append_cmd(desc, CMD_STORE | options | len);
+-
+-	/* The following options do not require pointer */
+-	if (!(cmd_src == LDST_SRCDST_WORD_DESCBUF_SHARED ||
+-	      cmd_src == LDST_SRCDST_WORD_DESCBUF_JOB    ||
+-	      cmd_src == LDST_SRCDST_WORD_DESCBUF_JOB_WE ||
+-	      cmd_src == LDST_SRCDST_WORD_DESCBUF_SHARED_WE))
+-		append_ptr(desc, ptr);
+-}
+-
+ #define APPEND_SEQ_PTR_INTLEN(cmd, op) \
+ static inline void append_seq_##cmd##_ptr_intlen(u32 *desc, dma_addr_t ptr, \
+ 						 unsigned int len, \
+ 						 u32 options) \
+ { \
+ 	PRINT_POS; \
+-	if (options & (SQIN_RTO | SQIN_PRE)) \
+-		append_cmd(desc, CMD_SEQ_##op##_PTR | len | options); \
+-	else \
+-		append_cmd_ptr(desc, ptr, len, CMD_SEQ_##op##_PTR | options); \
++	append_cmd_ptr(desc, ptr, len, CMD_SEQ_##op##_PTR | options); \
+ }
+ APPEND_SEQ_PTR_INTLEN(in, IN)
+ APPEND_SEQ_PTR_INTLEN(out, OUT)
+@@ -300,7 +259,7 @@ APPEND_CMD_RAW_IMM(load, LOAD, u32);
+  */
+ #define APPEND_MATH(op, desc, dest, src_0, src_1, len) \
+ append_cmd(desc, CMD_MATH | MATH_FUN_##op | MATH_DEST_##dest | \
+-	MATH_SRC0_##src_0 | MATH_SRC1_##src_1 | (u32)len);
++	   MATH_SRC0_##src_0 | MATH_SRC1_##src_1 | (u32) (len & MATH_LEN_MASK));
+ 
+ #define append_math_add(desc, dest, src0, src1, len) \
+ 	APPEND_MATH(ADD, desc, dest, src0, src1, len)
+@@ -320,8 +279,6 @@ append_cmd(desc, CMD_MATH | MATH_FUN_##op | MATH_DEST_##dest | \
+ 	APPEND_MATH(LSHIFT, desc, dest, src0, src1, len)
+ #define append_math_rshift(desc, dest, src0, src1, len) \
+ 	APPEND_MATH(RSHIFT, desc, dest, src0, src1, len)
+-#define append_math_ldshift(desc, dest, src0, src1, len) \
+-	APPEND_MATH(SHLD, desc, dest, src0, src1, len)
+ 
+ /* Exactly one source is IMM. Data is passed in as u32 value */
+ #define APPEND_MATH_IMM_u32(op, desc, dest, src_0, src_1, data) \
+@@ -348,34 +305,3 @@ do { \
+ 	APPEND_MATH_IMM_u32(LSHIFT, desc, dest, src0, src1, data)
+ #define append_math_rshift_imm_u32(desc, dest, src0, src1, data) \
+ 	APPEND_MATH_IMM_u32(RSHIFT, desc, dest, src0, src1, data)
+-
+-/* Exactly one source is IMM. Data is passed in as u64 value */
+-#define APPEND_MATH_IMM_u64(op, desc, dest, src_0, src_1, data) \
+-do { \
+-	u32 upper = (data >> 16) >> 16; \
+-	APPEND_MATH(op, desc, dest, src_0, src_1, CAAM_CMD_SZ * 2 | \
+-		    (upper ? 0 : MATH_IFB)); \
+-	if (upper) \
+-		append_u64(desc, data); \
+-	else \
+-		append_u32(desc, data); \
+-} while (0)
+-
+-#define append_math_add_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(ADD, desc, dest, src0, src1, data)
+-#define append_math_sub_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(SUB, desc, dest, src0, src1, data)
+-#define append_math_add_c_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(ADDC, desc, dest, src0, src1, data)
+-#define append_math_sub_b_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(SUBB, desc, dest, src0, src1, data)
+-#define append_math_and_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(AND, desc, dest, src0, src1, data)
+-#define append_math_or_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(OR, desc, dest, src0, src1, data)
+-#define append_math_xor_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(XOR, desc, dest, src0, src1, data)
+-#define append_math_lshift_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(LSHIFT, desc, dest, src0, src1, data)
+-#define append_math_rshift_imm_u64(desc, dest, src0, src1, data) \
+-	APPEND_MATH_IMM_u64(RSHIFT, desc, dest, src0, src1, data)
+diff --git a/drivers/crypto/caam/intern.h b/drivers/crypto/caam/intern.h
+index 6d85fcc..6bb12f3 100644
+--- a/drivers/crypto/caam/intern.h
++++ b/drivers/crypto/caam/intern.h
+@@ -2,13 +2,19 @@
+  * CAAM/SEC 4.x driver backend
+  * Private/internal definitions between modules
+  *
+- * Copyright 2008-2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  *
+  */
+ 
+ #ifndef INTERN_H
+ #define INTERN_H
+ 
++#define JOBR_UNASSIGNED 0
++#define JOBR_ASSIGNED 1
++
++/* Default clock/sample settings for an RNG4 entropy source */
++#define RNG4_ENT_CLOCKS_SAMPLE 1600
++
+ /* Currently comes from Kconfig param as a ^2 (driver-required) */
+ #define JOBR_DEPTH (1 << CONFIG_CRYPTO_DEV_FSL_CAAM_RINGSIZE)
+ 
+@@ -37,15 +43,13 @@ struct caam_jrentry_info {
+ 
+ /* Private sub-storage for a single JobR */
+ struct caam_drv_private_jr {
+-	struct list_head	list_node;	/* Job Ring device list */
+-	struct device		*dev;
++	struct device *parentdev;	/* points back to controller dev */
++	struct platform_device *jr_pdev;/* points to platform device for JR */
+ 	int ridx;
+ 	struct caam_job_ring __iomem *rregs;	/* JobR's register space */
+ 	struct tasklet_struct irqtask;
+ 	int irq;			/* One per queue */
+-
+-	/* Number of scatterlist crypt transforms active on the JobR */
+-	atomic_t tfm_count ____cacheline_aligned;
++	int assign;			/* busy/free */
+ 
+ 	/* Job ring info */
+ 	int ringsize;	/* Size of rings (assume input = output) */
+@@ -66,7 +70,10 @@ struct caam_drv_private_jr {
+ struct caam_drv_private {
+ 
+ 	struct device *dev;
+-	struct platform_device **jrpdev; /* Alloc'ed array per sub-device */
++	struct device *smdev;
++	struct device *secviodev;
++	struct device **jrdev; /* Alloc'ed array per sub-device */
++	spinlock_t jr_alloc_lock;
+ 	struct platform_device *pdev;
+ 
+ 	/* Physical-presence section */
+@@ -74,6 +81,9 @@ struct caam_drv_private {
+ 	struct caam_deco **deco; /* DECO/CCB views */
+ 	struct caam_assurance *ac;
+ 	struct caam_queue_if *qi; /* QI control region */
++	struct snvs_full __iomem *snvs;	/* SNVS HP+LP register space */
++	dma_addr_t __iomem *sm_base;	/* Secure memory storage base */
++	u32 sm_size;
+ 
+ 	/*
+ 	 * Detected geometry block. Filled in from device tree if powerpc,
+@@ -82,13 +92,22 @@ struct caam_drv_private {
+ 	u8 total_jobrs;		/* Total Job Rings in device */
+ 	u8 qi_present;		/* Nonzero if QI present in device */
+ 	int secvio_irq;		/* Security violation interrupt number */
++	int rng_inst;		/* Total instantiated RNGs */
+ 
+-#define	RNG4_MAX_HANDLES 2
+-	/* RNG4 block */
+-	u32 rng4_sh_init;	/* This bitmap shows which of the State
+-				   Handles of the RNG4 block are initialized
+-				   by this driver */
++	/* which jr allocated to scatterlist crypto */
++	atomic_t tfm_count ____cacheline_aligned;
++	int num_jrs_for_algapi;
++	struct device **algapi_jr;
++	/* list of registered crypto algorithms (mk generic context handle?) */
++	struct list_head alg_list;
++	/* list of registered hash algorithms (mk generic context handle?) */
++	struct list_head hash_list;
+ 
++#ifdef CONFIG_ARM
++	struct clk *caam_ipg;
++	struct clk *caam_mem;
++	struct clk *caam_aclk;
++#endif
+ 	/*
+ 	 * debugfs entries for developer view into driver/device
+ 	 * variables at runtime.
+diff --git a/drivers/crypto/caam/jr.c b/drivers/crypto/caam/jr.c
+index b512a4b..b16be1c 100644
+--- a/drivers/crypto/caam/jr.c
++++ b/drivers/crypto/caam/jr.c
+@@ -2,125 +2,15 @@
+  * CAAM/SEC 4.x transport/backend driver
+  * JobR backend functionality
+  *
+- * Copyright 2008-2012 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  */
+ 
+-#include <linux/of_irq.h>
+-#include <linux/of_address.h>
+-
+ #include "compat.h"
+ #include "regs.h"
+ #include "jr.h"
+ #include "desc.h"
+ #include "intern.h"
+ 
+-struct jr_driver_data {
+-	/* List of Physical JobR's with the Driver */
+-	struct list_head	jr_list;
+-	spinlock_t		jr_alloc_lock;	/* jr_list lock */
+-} ____cacheline_aligned;
+-
+-static struct jr_driver_data driver_data;
+-
+-static int caam_reset_hw_jr(struct device *dev)
+-{
+-	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
+-	unsigned int timeout = 100000;
+-
+-	/*
+-	 * mask interrupts since we are going to poll
+-	 * for reset completion status
+-	 */
+-	setbits32(&jrp->rregs->rconfig_lo, JRCFG_IMSK);
+-
+-	/* initiate flush (required prior to reset) */
+-	wr_reg32(&jrp->rregs->jrcommand, JRCR_RESET);
+-	while (((rd_reg32(&jrp->rregs->jrintstatus) & JRINT_ERR_HALT_MASK) ==
+-		JRINT_ERR_HALT_INPROGRESS) && --timeout)
+-		cpu_relax();
+-
+-	if ((rd_reg32(&jrp->rregs->jrintstatus) & JRINT_ERR_HALT_MASK) !=
+-	    JRINT_ERR_HALT_COMPLETE || timeout == 0) {
+-		dev_err(dev, "failed to flush job ring %d\n", jrp->ridx);
+-		return -EIO;
+-	}
+-
+-	/* initiate reset */
+-	timeout = 100000;
+-	wr_reg32(&jrp->rregs->jrcommand, JRCR_RESET);
+-	while ((rd_reg32(&jrp->rregs->jrcommand) & JRCR_RESET) && --timeout)
+-		cpu_relax();
+-
+-	if (timeout == 0) {
+-		dev_err(dev, "failed to reset job ring %d\n", jrp->ridx);
+-		return -EIO;
+-	}
+-
+-	/* unmask interrupts */
+-	clrbits32(&jrp->rregs->rconfig_lo, JRCFG_IMSK);
+-
+-	return 0;
+-}
+-
+-/*
+- * Shutdown JobR independent of platform property code
+- */
+-int caam_jr_shutdown(struct device *dev)
+-{
+-	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
+-	dma_addr_t inpbusaddr, outbusaddr;
+-	int ret;
+-
+-	ret = caam_reset_hw_jr(dev);
+-
+-	tasklet_kill(&jrp->irqtask);
+-
+-	/* Release interrupt */
+-	free_irq(jrp->irq, dev);
+-
+-	/* Free rings */
+-	inpbusaddr = rd_reg64(&jrp->rregs->inpring_base);
+-	outbusaddr = rd_reg64(&jrp->rregs->outring_base);
+-	dma_free_coherent(dev, sizeof(dma_addr_t) * JOBR_DEPTH,
+-			  jrp->inpring, inpbusaddr);
+-	dma_free_coherent(dev, sizeof(struct jr_outentry) * JOBR_DEPTH,
+-			  jrp->outring, outbusaddr);
+-	kfree(jrp->entinfo);
+-
+-	return ret;
+-}
+-
+-static int caam_jr_remove(struct platform_device *pdev)
+-{
+-	int ret;
+-	struct device *jrdev;
+-	struct caam_drv_private_jr *jrpriv;
+-
+-	jrdev = &pdev->dev;
+-	jrpriv = dev_get_drvdata(jrdev);
+-
+-	/*
+-	 * Return EBUSY if job ring already allocated.
+-	 */
+-	if (atomic_read(&jrpriv->tfm_count)) {
+-		dev_err(jrdev, "Device is busy\n");
+-		return -EBUSY;
+-	}
+-
+-	/* Remove the node from Physical JobR list maintained by driver */
+-	spin_lock(&driver_data.jr_alloc_lock);
+-	list_del(&jrpriv->list_node);
+-	spin_unlock(&driver_data.jr_alloc_lock);
+-
+-	/* Release ring */
+-	ret = caam_jr_shutdown(jrdev);
+-	if (ret)
+-		dev_err(jrdev, "Failed to shut down job ring\n");
+-	irq_dispose_mapping(jrpriv->irq);
+-
+-	return ret;
+-}
+-
+ /* Main per-ring interrupt handler */
+ static irqreturn_t caam_jr_interrupt(int irq, void *st_dev)
+ {
+@@ -168,6 +58,9 @@ static void caam_jr_dequeue(unsigned long devarg)
+ 	void (*usercall)(struct device *dev, u32 *desc, u32 status, void *arg);
+ 	u32 *userdesc, userstatus;
+ 	void *userarg;
++	dma_addr_t outbusaddr;
++
++	outbusaddr = rd_reg64(&jrp->rregs->outring_base);
+ 
+ 	while (rd_reg32(&jrp->rregs->outring_used)) {
+ 
+@@ -177,6 +70,9 @@ static void caam_jr_dequeue(unsigned long devarg)
+ 
+ 		sw_idx = tail = jrp->tail;
+ 		hw_idx = jrp->out_ring_read_index;
++		dma_sync_single_for_cpu(dev, outbusaddr,
++					sizeof(struct jr_outentry) * JOBR_DEPTH,
++					DMA_FROM_DEVICE);
+ 
+ 		for (i = 0; CIRC_CNT(head, tail + i, JOBR_DEPTH) >= 1; i++) {
+ 			sw_idx = (tail + i) & (JOBR_DEPTH - 1);
+@@ -204,6 +100,8 @@ static void caam_jr_dequeue(unsigned long devarg)
+ 		userdesc = jrp->entinfo[sw_idx].desc_addr_virt;
+ 		userstatus = jrp->outring[hw_idx].jrstatus;
+ 
++		smp_mb();
++
+ 		/* set done */
+ 		wr_reg32(&jrp->rregs->outring_rmvd, 1);
+ 
+@@ -236,57 +134,70 @@ static void caam_jr_dequeue(unsigned long devarg)
+ }
+ 
+ /**
+- * caam_jr_alloc() - Alloc a job ring for someone to use as needed.
+- *
+- * returns :  pointer to the newly allocated physical
+- *	      JobR dev can be written to if successful.
++ * caam_jr_register() - Alloc a ring for someone to use as needed. Returns
++ * an ordinal of the rings allocated, else returns -ENODEV if no rings
++ * are available.
++ * @ctrldev: points to the controller level dev (parent) that
++ *           owns rings available for use.
++ * @dev:     points to where a pointer to the newly allocated queue's
++ *           dev can be written to if successful.
+  **/
+-struct device *caam_jr_alloc(void)
++int caam_jr_register(struct device *ctrldev, struct device **rdev)
+ {
+-	struct caam_drv_private_jr *jrpriv, *min_jrpriv = NULL;
+-	struct device *dev = NULL;
+-	int min_tfm_cnt	= INT_MAX;
+-	int tfm_cnt;
+-
+-	spin_lock(&driver_data.jr_alloc_lock);
+-
+-	if (list_empty(&driver_data.jr_list)) {
+-		spin_unlock(&driver_data.jr_alloc_lock);
+-		return ERR_PTR(-ENODEV);
+-	}
+-
+-	list_for_each_entry(jrpriv, &driver_data.jr_list, list_node) {
+-		tfm_cnt = atomic_read(&jrpriv->tfm_count);
+-		if (tfm_cnt < min_tfm_cnt) {
+-			min_tfm_cnt = tfm_cnt;
+-			min_jrpriv = jrpriv;
++	struct caam_drv_private *ctrlpriv = dev_get_drvdata(ctrldev);
++	struct caam_drv_private_jr *jrpriv = NULL;
++	int ring;
++
++	/* Lock, if free ring - assign, unlock */
++	spin_lock(&ctrlpriv->jr_alloc_lock);
++	for (ring = 0; ring < ctrlpriv->total_jobrs; ring++) {
++		jrpriv = dev_get_drvdata(ctrlpriv->jrdev[ring]);
++		if (jrpriv->assign == JOBR_UNASSIGNED) {
++			jrpriv->assign = JOBR_ASSIGNED;
++			*rdev = ctrlpriv->jrdev[ring];
++			spin_unlock(&ctrlpriv->jr_alloc_lock);
++			return ring;
+ 		}
+-		if (!min_tfm_cnt)
+-			break;
+ 	}
+ 
+-	if (min_jrpriv) {
+-		atomic_inc(&min_jrpriv->tfm_count);
+-		dev = min_jrpriv->dev;
+-	}
+-	spin_unlock(&driver_data.jr_alloc_lock);
++	/* If assigned, write dev where caller needs it */
++	spin_unlock(&ctrlpriv->jr_alloc_lock);
++	*rdev = NULL;
+ 
+-	return dev;
++	return -ENODEV;
+ }
+-EXPORT_SYMBOL(caam_jr_alloc);
++EXPORT_SYMBOL(caam_jr_register);
+ 
+ /**
+- * caam_jr_free() - Free the Job Ring
+- * @rdev     - points to the dev that identifies the Job ring to
+- *             be released.
++ * caam_jr_deregister() - Deregister an API and release the queue.
++ * Returns 0 if OK, -EBUSY if queue still contains pending entries
++ * or unprocessed results at the time of the call
++ * @dev     - points to the dev that identifies the queue to
++ *            be released.
+  **/
+-void caam_jr_free(struct device *rdev)
++int caam_jr_deregister(struct device *rdev)
+ {
+ 	struct caam_drv_private_jr *jrpriv = dev_get_drvdata(rdev);
++	struct caam_drv_private *ctrlpriv;
++
++	/* Get the owning controller's private space */
++	ctrlpriv = dev_get_drvdata(jrpriv->parentdev);
++
++	/*
++	 * Make sure ring empty before release
++	 */
++	if (rd_reg32(&jrpriv->rregs->outring_used) ||
++	    (rd_reg32(&jrpriv->rregs->inpring_avail) != JOBR_DEPTH))
++		return -EBUSY;
++
++	/* Release ring */
++	spin_lock(&ctrlpriv->jr_alloc_lock);
++	jrpriv->assign = JOBR_UNASSIGNED;
++	spin_unlock(&ctrlpriv->jr_alloc_lock);
+ 
+-	atomic_dec(&jrpriv->tfm_count);
++	return 0;
+ }
+-EXPORT_SYMBOL(caam_jr_free);
++EXPORT_SYMBOL(caam_jr_deregister);
+ 
+ /**
+  * caam_jr_enqueue() - Enqueue a job descriptor head. Returns 0 if OK,
+@@ -324,7 +235,7 @@ int caam_jr_enqueue(struct device *dev, u32 *desc,
+ 	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
+ 	struct caam_jrentry_info *head_entry;
+ 	int head, tail, desc_size;
+-	dma_addr_t desc_dma;
++	dma_addr_t desc_dma, inpbusaddr;
+ 
+ 	desc_size = (*desc & HDR_JD_LENGTH_MASK) * sizeof(u32);
+ 	desc_dma = dma_map_single(dev, desc, desc_size, DMA_TO_DEVICE);
+@@ -333,6 +244,13 @@ int caam_jr_enqueue(struct device *dev, u32 *desc,
+ 		return -EIO;
+ 	}
+ 
++	dma_sync_single_for_device(dev, desc_dma, desc_size, DMA_TO_DEVICE);
++
++	inpbusaddr = rd_reg64(&jrp->rregs->inpring_base);
++	dma_sync_single_for_device(dev, inpbusaddr,
++					sizeof(dma_addr_t) * JOBR_DEPTH,
++					DMA_TO_DEVICE);
++
+ 	spin_lock_bh(&jrp->inplock);
+ 
+ 	head = jrp->head;
+@@ -354,12 +272,18 @@ int caam_jr_enqueue(struct device *dev, u32 *desc,
+ 
+ 	jrp->inpring[jrp->inp_ring_write_index] = desc_dma;
+ 
++	dma_sync_single_for_device(dev, inpbusaddr,
++					sizeof(dma_addr_t) * JOBR_DEPTH,
++					DMA_TO_DEVICE);
++
+ 	smp_wmb();
+ 
+ 	jrp->inp_ring_write_index = (jrp->inp_ring_write_index + 1) &
+ 				    (JOBR_DEPTH - 1);
+ 	jrp->head = (head + 1) & (JOBR_DEPTH - 1);
+ 
++	wmb();
++
+ 	wr_reg32(&jrp->rregs->inpring_jobadd, 1);
+ 
+ 	spin_unlock_bh(&jrp->inplock);
+@@ -368,6 +292,46 @@ int caam_jr_enqueue(struct device *dev, u32 *desc,
+ }
+ EXPORT_SYMBOL(caam_jr_enqueue);
+ 
++static int caam_reset_hw_jr(struct device *dev)
++{
++	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
++	unsigned int timeout = 100000;
++
++	/*
++	 * mask interrupts since we are going to poll
++	 * for reset completion status
++	 */
++	setbits32(&jrp->rregs->rconfig_lo, JRCFG_IMSK);
++
++	/* initiate flush (required prior to reset) */
++	wr_reg32(&jrp->rregs->jrcommand, JRCR_RESET);
++	while (((rd_reg32(&jrp->rregs->jrintstatus) & JRINT_ERR_HALT_MASK) ==
++		JRINT_ERR_HALT_INPROGRESS) && --timeout)
++		cpu_relax();
++
++	if ((rd_reg32(&jrp->rregs->jrintstatus) & JRINT_ERR_HALT_MASK) !=
++	    JRINT_ERR_HALT_COMPLETE || timeout == 0) {
++		dev_err(dev, "failed to flush job ring %d\n", jrp->ridx);
++		return -EIO;
++	}
++
++	/* initiate reset */
++	timeout = 100000;
++	wr_reg32(&jrp->rregs->jrcommand, JRCR_RESET);
++	while ((rd_reg32(&jrp->rregs->jrcommand) & JRCR_RESET) && --timeout)
++		cpu_relax();
++
++	if (timeout == 0) {
++		dev_err(dev, "failed to reset job ring %d\n", jrp->ridx);
++		return -EIO;
++	}
++
++	/* unmask interrupts */
++	clrbits32(&jrp->rregs->rconfig_lo, JRCFG_IMSK);
++
++	return 0;
++}
++
+ /*
+  * Init JobR independent of platform property detection
+  */
+@@ -383,7 +347,7 @@ static int caam_jr_init(struct device *dev)
+ 
+ 	/* Connect job ring interrupt handler. */
+ 	error = request_irq(jrp->irq, caam_jr_interrupt, IRQF_SHARED,
+-			    dev_name(dev), dev);
++			    "caam-jobr", dev);
+ 	if (error) {
+ 		dev_err(dev, "can't connect JobR %d interrupt (%d)\n",
+ 			jrp->ridx, jrp->irq);
+@@ -436,46 +400,103 @@ static int caam_jr_init(struct device *dev)
+ 		  (JOBR_INTC_COUNT_THLD << JRCFG_ICDCT_SHIFT) |
+ 		  (JOBR_INTC_TIME_THLD << JRCFG_ICTT_SHIFT));
+ 
++	jrp->assign = JOBR_UNASSIGNED;
+ 	return 0;
+ }
+ 
++/*
++ * Shutdown JobR independent of platform property code
++ */
++int caam_jr_shutdown(struct device *dev)
++{
++	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
++	dma_addr_t inpbusaddr, outbusaddr;
++	int ret;
++
++	ret = caam_reset_hw_jr(dev);
++
++	tasklet_kill(&jrp->irqtask);
++
++	/* Release interrupt */
++	free_irq(jrp->irq, dev);
++
++	/* Free rings */
++	inpbusaddr = rd_reg64(&jrp->rregs->inpring_base);
++	outbusaddr = rd_reg64(&jrp->rregs->outring_base);
++	dma_free_coherent(dev, sizeof(dma_addr_t) * JOBR_DEPTH,
++			  jrp->inpring, inpbusaddr);
++	dma_free_coherent(dev, sizeof(struct jr_outentry) * JOBR_DEPTH,
++			  jrp->outring, outbusaddr);
++	kfree(jrp->entinfo);
++	of_device_unregister(jrp->jr_pdev);
++
++	return ret;
++}
+ 
+ /*
+- * Probe routine for each detected JobR subsystem.
++ * Probe routine for each detected JobR subsystem. It assumes that
++ * property detection was picked up externally.
+  */
+-static int caam_jr_probe(struct platform_device *pdev)
++int caam_jr_probe(struct platform_device *pdev, struct device_node *np,
++		  int ring)
+ {
+-	struct device *jrdev;
+-	struct device_node *nprop;
+-	struct caam_job_ring __iomem *ctrl;
++	struct device *ctrldev, *jrdev;
++	struct platform_device *jr_pdev;
++	struct caam_drv_private *ctrlpriv;
+ 	struct caam_drv_private_jr *jrpriv;
+-	static int total_jobrs;
++	const __be32 *jroffset_addr;
++	u32 jroffset;
+ 	int error;
+ 
+-	jrdev = &pdev->dev;
+-	jrpriv = devm_kmalloc(jrdev, sizeof(struct caam_drv_private_jr),
+-			      GFP_KERNEL);
+-	if (!jrpriv)
++	ctrldev = &pdev->dev;
++	ctrlpriv = dev_get_drvdata(ctrldev);
++
++	jrpriv = kmalloc(sizeof(struct caam_drv_private_jr),
++			 GFP_KERNEL);
++	if (jrpriv == NULL) {
++		dev_err(ctrldev, "can't alloc private mem for job ring %d\n",
++			ring);
+ 		return -ENOMEM;
++	}
++	jrpriv->parentdev = ctrldev; /* point back to parent */
++	jrpriv->ridx = ring; /* save ring identity relative to detection */
+ 
+-	dev_set_drvdata(jrdev, jrpriv);
++	/*
++	 * Derive a pointer to the detected JobRs regs
++	 * Driver has already iomapped the entire space, we just
++	 * need to add in the offset to this JobR. Don't know if I
++	 * like this long-term, but it'll run
++	 */
++	jroffset_addr = of_get_property(np, "reg", NULL);
+ 
+-	/* save ring identity relative to detection */
+-	jrpriv->ridx = total_jobrs++;
++	if (jroffset_addr == NULL) {
++		kfree(jrpriv);
++		return -EINVAL;
++	}
+ 
+-	nprop = pdev->dev.of_node;
+-	/* Get configuration properties from device tree */
+-	/* First, get register page */
+-	ctrl = of_iomap(nprop, 0);
+-	if (!ctrl) {
+-		dev_err(jrdev, "of_iomap() failed\n");
+-		return -ENOMEM;
++	/*
++	 * Fix the endianness of this value read from the device
++	 * tree if running on ARM.
++	 */
++	jroffset = be32_to_cpup(jroffset_addr);
++
++	jrpriv->rregs = (struct caam_job_ring __iomem *)((void *)ctrlpriv->ctrl
++							 + jroffset);
++
++	/* Build a local dev for each detected queue */
++	jr_pdev = of_platform_device_create(np, NULL, ctrldev);
++	if (jr_pdev == NULL) {
++		kfree(jrpriv);
++		return -EINVAL;
+ 	}
+ 
+-	jrpriv->rregs = (struct caam_job_ring __force *)ctrl;
++	jrpriv->jr_pdev = jr_pdev;
++	jrdev = &jr_pdev->dev;
++	dev_set_drvdata(jrdev, jrpriv);
++	ctrlpriv->jrdev[ring] = jrdev;
+ 
+ 	if (sizeof(dma_addr_t) == sizeof(u64))
+-		if (of_device_is_compatible(nprop, "fsl,sec-v5.0-job-ring"))
++		if (of_device_is_compatible(np, "fsl,sec-v4.0-job-ring"))
+ 			dma_set_mask(jrdev, DMA_BIT_MASK(40));
+ 		else
+ 			dma_set_mask(jrdev, DMA_BIT_MASK(36));
+@@ -483,59 +504,19 @@ static int caam_jr_probe(struct platform_device *pdev)
+ 		dma_set_mask(jrdev, DMA_BIT_MASK(32));
+ 
+ 	/* Identify the interrupt */
+-	jrpriv->irq = irq_of_parse_and_map(nprop, 0);
++	jrpriv->irq = of_irq_to_resource(np, 0, NULL);
++	if (jrpriv->irq <= 0) {
++		kfree(jrpriv);
++		return -EINVAL;
++	}
+ 
+ 	/* Now do the platform independent part */
+ 	error = caam_jr_init(jrdev); /* now turn on hardware */
+-	if (error)
++	if (error) {
++		of_device_unregister(jr_pdev);
++		kfree(jrpriv);
+ 		return error;
++	}
+ 
+-	jrpriv->dev = jrdev;
+-	spin_lock(&driver_data.jr_alloc_lock);
+-	list_add_tail(&jrpriv->list_node, &driver_data.jr_list);
+-	spin_unlock(&driver_data.jr_alloc_lock);
+-
+-	atomic_set(&jrpriv->tfm_count, 0);
+-
+-	return 0;
+-}
+-
+-static struct of_device_id caam_jr_match[] = {
+-	{
+-		.compatible = "fsl,sec-v4.0-job-ring",
+-	},
+-	{
+-		.compatible = "fsl,sec4.0-job-ring",
+-	},
+-	{},
+-};
+-MODULE_DEVICE_TABLE(of, caam_jr_match);
+-
+-static struct platform_driver caam_jr_driver = {
+-	.driver = {
+-		.name = "caam_jr",
+-		.owner = THIS_MODULE,
+-		.of_match_table = caam_jr_match,
+-	},
+-	.probe       = caam_jr_probe,
+-	.remove      = caam_jr_remove,
+-};
+-
+-static int __init jr_driver_init(void)
+-{
+-	spin_lock_init(&driver_data.jr_alloc_lock);
+-	INIT_LIST_HEAD(&driver_data.jr_list);
+-	return platform_driver_register(&caam_jr_driver);
+-}
+-
+-static void __exit jr_driver_exit(void)
+-{
+-	platform_driver_unregister(&caam_jr_driver);
++	return error;
+ }
+-
+-module_init(jr_driver_init);
+-module_exit(jr_driver_exit);
+-
+-MODULE_LICENSE("GPL");
+-MODULE_DESCRIPTION("FSL CAAM JR request backend");
+-MODULE_AUTHOR("Freescale Semiconductor - NMG/STC");
+diff --git a/drivers/crypto/caam/jr.h b/drivers/crypto/caam/jr.h
+index 97113a6..0c424d8 100644
+--- a/drivers/crypto/caam/jr.h
++++ b/drivers/crypto/caam/jr.h
+@@ -1,18 +1,22 @@
+ /*
+  * CAAM public-level include definitions for the JobR backend
+  *
+- * Copyright 2008-2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  */
+ 
+ #ifndef JR_H
+ #define JR_H
+ 
+ /* Prototypes for backend-level services exposed to APIs */
+-struct device *caam_jr_alloc(void);
+-void caam_jr_free(struct device *rdev);
++int caam_jr_register(struct device *ctrldev, struct device **rdev);
++int caam_jr_deregister(struct device *rdev);
+ int caam_jr_enqueue(struct device *dev, u32 *desc,
+ 		    void (*cbk)(struct device *dev, u32 *desc, u32 status,
+ 				void *areq),
+ 		    void *areq);
+ 
++extern int caam_jr_probe(struct platform_device *pdev, struct device_node *np,
++			 int ring);
++extern int caam_jr_shutdown(struct device *dev);
++extern struct device *caam_get_jrdev(void);
+ #endif /* JR_H */
+diff --git a/drivers/crypto/caam/key_gen.c b/drivers/crypto/caam/key_gen.c
+index ea2e406..2f44380 100644
+--- a/drivers/crypto/caam/key_gen.c
++++ b/drivers/crypto/caam/key_gen.c
+@@ -1,7 +1,7 @@
+ /*
+  * CAAM/SEC 4.x functions for handling key-generation jobs
+  *
+- * Copyright 2008-2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  *
+  */
+ #include "compat.h"
+@@ -68,6 +68,7 @@ int gen_split_key(struct device *jrdev, u8 *key_out, int split_key_len,
+ 		kfree(desc);
+ 		return -ENOMEM;
+ 	}
++	dma_sync_single_for_device(jrdev, dma_addr_in, keylen, DMA_TO_DEVICE);
+ 	append_key(desc, dma_addr_in, keylen, CLASS_2 | KEY_DEST_CLASS_REG);
+ 
+ 	/* Sets MDHA up into an HMAC-INIT */
+@@ -95,9 +96,9 @@ int gen_split_key(struct device *jrdev, u8 *key_out, int split_key_len,
+ 			  LDST_CLASS_2_CCB | FIFOST_TYPE_SPLIT_KEK);
+ 
+ #ifdef DEBUG
+-	print_hex_dump(KERN_ERR, "ctx.key@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "ctx.key@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, key_in, keylen, 1);
+-	print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
++	print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
+ 		       DUMP_PREFIX_ADDRESS, 16, 4, desc, desc_bytes(desc), 1);
+ #endif
+ 
+@@ -110,12 +111,13 @@ int gen_split_key(struct device *jrdev, u8 *key_out, int split_key_len,
+ 		wait_for_completion_interruptible(&result.completion);
+ 		ret = result.err;
+ #ifdef DEBUG
+-		print_hex_dump(KERN_ERR, "ctx.key@"__stringify(__LINE__)": ",
++		print_hex_dump(KERN_ERR, "ctx.key@"xstr(__LINE__)": ",
+ 			       DUMP_PREFIX_ADDRESS, 16, 4, key_out,
+ 			       split_key_pad_len, 1);
+ #endif
+ 	}
+-
++	dma_sync_single_for_cpu(jrdev, dma_addr_out, split_key_pad_len,
++				DMA_FROM_DEVICE);
+ 	dma_unmap_single(jrdev, dma_addr_out, split_key_pad_len,
+ 			 DMA_FROM_DEVICE);
+ 	dma_unmap_single(jrdev, dma_addr_in, keylen, DMA_TO_DEVICE);
+diff --git a/drivers/crypto/caam/pdb.h b/drivers/crypto/caam/pdb.h
+index 3a87c0c..62950d2 100644
+--- a/drivers/crypto/caam/pdb.h
++++ b/drivers/crypto/caam/pdb.h
+@@ -44,7 +44,6 @@
+ #define PDBOPTS_ESP_IPHDRSRC	0x08 /* IP header comes from PDB (encap) */
+ #define PDBOPTS_ESP_INCIPHDR	0x04 /* Prepend IP header to output frame */
+ #define PDBOPTS_ESP_IPVSN	0x02 /* process IPv6 header */
+-#define PDBOPTS_ESP_AOFL	0x04 /* adjust out frame len (decap, SEC>=5.3)*/
+ #define PDBOPTS_ESP_TUNNEL	0x01 /* tunnel mode next-header byte */
+ #define PDBOPTS_ESP_IPV6	0x02 /* ip header version is V6 */
+ #define PDBOPTS_ESP_DIFFSERV	0x40 /* copy TOS/TC from inner iphdr */
+diff --git a/drivers/crypto/caam/regs.h b/drivers/crypto/caam/regs.h
+index d50174f..85deba9 100644
+--- a/drivers/crypto/caam/regs.h
++++ b/drivers/crypto/caam/regs.h
+@@ -1,7 +1,7 @@
+ /*
+  * CAAM hardware register-level view
+  *
+- * Copyright 2008-2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  */
+ 
+ #ifndef REGS_H
+@@ -74,15 +74,21 @@
+ #endif
+ #else
+ #ifdef __LITTLE_ENDIAN
+-#define wr_reg32(reg, data) __raw_writel(reg, data)
+-#define rd_reg32(reg) __raw_readl(reg)
++#define wr_reg32(reg, data) writel(data, reg)
++#define rd_reg32(reg) readl(reg)
+ #ifdef CONFIG_64BIT
+-#define wr_reg64(reg, data) __raw_writeq(reg, data)
+-#define rd_reg64(reg) __raw_readq(reg)
++#define wr_reg64(reg, data) writeq(data, reg)
++#define rd_reg64(reg) readq(reg)
+ #endif
+ #endif
+ #endif
+ 
++#ifdef CONFIG_ARM
++/* These are common macros for Power, put here for ARMs */
++#define setbits32(_addr, _v) writel((readl(_addr) | (_v)), (_addr))
++#define clrbits32(_addr, _v) writel((readl(_addr) & ~(_v)), (_addr))
++#endif
++
+ #ifndef CONFIG_64BIT
+ static inline void wr_reg64(u64 __iomem *reg, u64 data)
+ {
+@@ -107,52 +113,107 @@ struct jr_outentry {
+ } __packed;
+ 
+ /*
+- * caam_perfmon - Performance Monitor/Secure Memory Status/
+- *                CAAM Global Status/Component Version IDs
+- *
+- * Spans f00-fff wherever instantiated
++ * CHA version ID / instantiation bitfields
++ * Defined for use within cha_id in perfmon
++ * Note that the same shift/mask selectors can be used to pull out number
++ * of instantiated blocks within cha_num in perfmon, the locations are
++ * the same.
+  */
+ 
+-/* Number of DECOs */
+-#define CHA_NUM_DECONUM_SHIFT	56
++/* Job Ring */
++#define CHA_ID_JR_SHIFT	60
++#define CHA_ID_JR_MASK		(0xfull << CHA_ID_JR_SHIFT)
++
++/* DEscriptor COntroller */
++#define CHA_ID_DECO_SHIFT	56
++#define CHA_ID_DECO_MASK	(0xfull << CHA_ID_DECO_SHIFT)
++#define CHA_NUM_DECONUM_SHIFT	56 /* legacy definition */
+ #define CHA_NUM_DECONUM_MASK	(0xfull << CHA_NUM_DECONUM_SHIFT)
+ 
+-/* CHA Version IDs */
+-#define CHA_ID_AES_SHIFT	0
+-#define CHA_ID_AES_MASK		(0xfull << CHA_ID_AES_SHIFT)
++/* ZUC-Authentication */
++#define CHA_ID_ZA_SHIFT	44
++#define CHA_ID_ZA_MASK		(0xfull << CHA_ID_ZA_SHIFT)
+ 
+-#define CHA_ID_DES_SHIFT	4
+-#define CHA_ID_DES_MASK		(0xfull << CHA_ID_DES_SHIFT)
++/* ZUC-Encryption */
++#define CHA_ID_ZE_SHIFT	40
++#define CHA_ID_ZE_MASK		(0xfull << CHA_ID_ZE_SHIFT)
+ 
+-#define CHA_ID_ARC4_SHIFT	8
+-#define CHA_ID_ARC4_MASK	(0xfull << CHA_ID_ARC4_SHIFT)
++/* SNOW f9 */
++#define CHA_ID_SNW9_SHIFT	36
++#define CHA_ID_SNW9_MASK	(0xfull << CHA_ID_SNW9_SHIFT)
+ 
+-#define CHA_ID_MD_SHIFT		12
+-#define CHA_ID_MD_MASK		(0xfull << CHA_ID_MD_SHIFT)
++/* CRC */
++#define CHA_ID_CRC_SHIFT	32
++#define CHA_ID_CRC_MASK		(0xfull << CHA_ID_CRC_SHIFT)
+ 
+-#define CHA_ID_RNG_SHIFT	16
+-#define CHA_ID_RNG_MASK		(0xfull << CHA_ID_RNG_SHIFT)
++/* Public Key */
++#define CHA_ID_PK_SHIFT	28
++#define CHA_ID_PK_MASK		(0xfull << CHA_ID_PK_SHIFT)
++
++/* Kasumi */
++#define CHA_ID_KAS_SHIFT	24
++#define CHA_ID_KAS_MASK		(0xfull << CHA_ID_KAS_SHIFT)
+ 
++/* SNOW f8 */
+ #define CHA_ID_SNW8_SHIFT	20
+ #define CHA_ID_SNW8_MASK	(0xfull << CHA_ID_SNW8_SHIFT)
+ 
+-#define CHA_ID_KAS_SHIFT	24
+-#define CHA_ID_KAS_MASK		(0xfull << CHA_ID_KAS_SHIFT)
++/*
++ * Random Generator
++ * RNG4 = FIPS-verification-compliant, requires init kickstart for use
++ */
++#define CHA_ID_RNG_SHIFT	16
++#define CHA_ID_RNG_MASK		(0xfull << CHA_ID_RNG_SHIFT)
++#define CHA_ID_RNG_A		(0x1ull << CHA_ID_RNG_SHIFT)
++#define CHA_ID_RNG_B		(0x2ull << CHA_ID_RNG_SHIFT)
++#define CHA_ID_RNG_C		(0x3ull << CHA_ID_RNG_SHIFT)
++#define CHA_ID_RNG_4		(0x4ull << CHA_ID_RNG_SHIFT)
+ 
+-#define CHA_ID_PK_SHIFT		28
+-#define CHA_ID_PK_MASK		(0xfull << CHA_ID_PK_SHIFT)
++/*
++ * Message Digest
++ * LP256 = Low Power (MD5/SHA1/SHA224/SHA256 + HMAC)
++ * LP512 = Low Power (LP256 + SHA384/SHA512)
++ * HP    = High Power (LP512 + SMAC)
++ */
++#define CHA_ID_MD_SHIFT		12
++#define CHA_ID_MD_MASK		(0xfull << CHA_ID_MD_SHIFT)
++#define CHA_ID_MD_LP256		(0x0ull << CHA_ID_MD_SHIFT)
++#define CHA_ID_MD_LP512		(0x1ull << CHA_ID_MD_SHIFT)
++#define CHA_ID_MD_HP		(0x2ull << CHA_ID_MD_SHIFT)
+ 
+-#define CHA_ID_CRC_SHIFT	32
+-#define CHA_ID_CRC_MASK		(0xfull << CHA_ID_CRC_SHIFT)
++/* ARC4 Streamcipher */
++#define CHA_ID_ARC4_SHIFT	8
++#define CHA_ID_ARC4_MASK	(0xfull << CHA_ID_ARC4_SHIFT)
++#define CHA_ID_ARC4_LP		(0x0ull << CHA_ID_ARC4_SHIFT)
++#define CHA_ID_ARC4_HP		(0x1ull << CHA_ID_ARC4_SHIFT)
+ 
+-#define CHA_ID_SNW9_SHIFT	36
+-#define CHA_ID_SNW9_MASK	(0xfull << CHA_ID_SNW9_SHIFT)
++/* DES Blockcipher Accelerator */
++#define CHA_ID_DES_SHIFT	4
++#define CHA_ID_DES_MASK		(0xfull << CHA_ID_DES_SHIFT)
+ 
+-#define CHA_ID_DECO_SHIFT	56
+-#define CHA_ID_DECO_MASK	(0xfull << CHA_ID_DECO_SHIFT)
++/*
++ * AES Blockcipher + Combo Mode Accelerator
++ * LP = Low Power (includes ECB/CBC/CFB128/OFB/CTR/CCM/CMAC/XCBC-MAC)
++ * HP = High Power (LP + CBCXCBC/CTRXCBC/XTS/GCM)
++ * DIFFPWR = ORed in if differential-power-analysis resistance implemented
++ */
++#define CHA_ID_AES_SHIFT	0
++#define CHA_ID_AES_MASK		(0xfull << CHA_ID_AES_SHIFT)
++#define CHA_ID_AES_LP		(0x3ull << CHA_ID_AES_SHIFT)
++#define CHA_ID_AES_HP		(0x4ull << CHA_ID_AES_SHIFT)
++#define CHA_ID_AES_DIFFPWR	(0x1ull << CHA_ID_AES_SHIFT)
+ 
+-#define CHA_ID_JR_SHIFT		60
+-#define CHA_ID_JR_MASK		(0xfull << CHA_ID_JR_SHIFT)
++
++/*
++ * caam_perfmon - Performance Monitor/Secure Memory Status/
++ *                CAAM Global Status/Component Version IDs
++ *
++ * Spans f00-fff wherever instantiated
++ */
++
++/* Number of DECOs */
++#define CHA_NUM_DECONUM_SHIFT	56
++#define CHA_NUM_DECONUM_MASK	(0xfull << CHA_NUM_DECONUM_SHIFT)
+ 
+ struct sec_vid {
+ 	u16 ip_id;
+@@ -160,6 +221,10 @@ struct sec_vid {
+ 	u8 min_rev;
+ };
+ 
++#define SEC_VID_IPID_SHIFT      16
++#define SEC_VID_MAJ_SHIFT       8
++#define SEC_VID_MAJ_MASK        0xFF00
++
+ struct caam_perfmon {
+ 	/* Performance Monitor Registers			f00-f9f */
+ 	u64 req_dequeued;	/* PC_REQ_DEQ - Dequeued Requests	     */
+@@ -176,15 +241,21 @@ struct caam_perfmon {
+ #define CTPR_QI_SHIFT		57
+ #define CTPR_QI_MASK		(0x1ull << CTPR_QI_SHIFT)
+ 	u64 comp_parms;	/* CTPR - Compile Parameters Register	*/
+-	u64 rsvd1[2];
++
++	/* Secure Memory State Visibility */
++	u32 rsvd1;
++	u32 smstatus;	/* Secure memory status */
++	u32 rsvd2;
++	u32 smpartown;	/* Secure memory partition owner */
+ 
+ 	/* CAAM Global Status					fc0-fdf */
+ 	u64 faultaddr;	/* FAR  - Fault Address		*/
+ 	u32 faultliodn;	/* FALR - Fault Address LIODN	*/
+ 	u32 faultdetail;	/* FADR - Fault Addr Detail	*/
+-	u32 rsvd2;
++	u32 rsvd3;
+ 	u32 status;		/* CSTA - CAAM Status */
+-	u64 rsvd3;
++	u32 smpart;		/* Secure Memory Partition Parameters */
++	u32 smvid;		/* Secure Memory Version ID */
+ 
+ 	/* Component Instantiation Parameters			fe0-fff */
+ 	u32 rtic_id;		/* RVID - RTIC Version ID	*/
+@@ -194,6 +265,62 @@ struct caam_perfmon {
+ 	u64 caam_id;		/* CAAMVID - CAAM Version ID	*/
+ };
+ 
++#define SMSTATUS_PART_SHIFT	28
++#define SMSTATUS_PART_MASK	(0xf << SMSTATUS_PART_SHIFT)
++#define SMSTATUS_PAGE_SHIFT	16
++#define SMSTATUS_PAGE_MASK	(0x7ff << SMSTATUS_PAGE_SHIFT)
++#define SMSTATUS_MID_SHIFT	8
++#define SMSTATUS_MID_MASK	(0x3f << SMSTATUS_MID_SHIFT)
++#define SMSTATUS_ACCERR_SHIFT	4
++#define SMSTATUS_ACCERR_MASK	(0xf << SMSTATUS_ACCERR_SHIFT)
++#define SMSTATUS_ACCERR_NONE	0
++#define SMSTATUS_ACCERR_ALLOC	1	/* Page not allocated */
++#define SMSTATUS_ACCESS_ID	2	/* Not granted by ID */
++#define SMSTATUS_ACCESS_WRITE	3	/* Writes not allowed */
++#define SMSTATUS_ACCESS_READ	4	/* Reads not allowed */
++#define SMSTATUS_ACCESS_NONKEY	6	/* Non-key reads not allowed */
++#define SMSTATUS_ACCESS_BLOB	9	/* Blob access not allowed */
++#define SMSTATUS_ACCESS_DESCB	10	/* Descriptor Blob access spans pages */
++#define SMSTATUS_ACCESS_NON_SM	11	/* Outside Secure Memory range */
++#define SMSTATUS_ACCESS_XPAGE	12	/* Access crosses pages */
++#define SMSTATUS_ACCESS_INITPG	13	/* Page still initializing */
++#define SMSTATUS_STATE_SHIFT	0
++#define SMSTATUS_STATE_MASK	(0xf << SMSTATUS_STATE_SHIFT)
++#define SMSTATUS_STATE_RESET	0
++#define SMSTATUS_STATE_INIT	1
++#define SMSTATUS_STATE_NORMAL	2
++#define SMSTATUS_STATE_FAIL	3
++
++/* up to 15 rings, 2 bits shifted by ring number */
++#define SMPARTOWN_RING_SHIFT	2
++#define SMPARTOWN_RING_MASK	3
++#define SMPARTOWN_AVAILABLE	0
++#define SMPARTOWN_NOEXIST	1
++#define SMPARTOWN_UNAVAILABLE	2
++#define SMPARTOWN_OURS		3
++
++/* Maximum number of pages possible */
++#define SMPART_MAX_NUMPG_SHIFT	16
++#define SMPART_MAX_NUMPG_MASK	(0x3f << SMPART_MAX_NUMPG_SHIFT)
++
++/* Maximum partition number */
++#define SMPART_MAX_PNUM_SHIFT	12
++#define SMPART_MAX_PNUM_MASK	(0xf << SMPART_MAX_PNUM_SHIFT)
++
++/* Highest possible page number */
++#define SMPART_MAX_PG_SHIFT	0
++#define SMPART_MAX_PG_MASK	(0x3f << SMPART_MAX_PG_SHIFT)
++
++/* Max size of a page */
++#define SMVID_PG_SIZE_SHIFT	16
++#define SMVID_PG_SIZE_MASK	(0x7 << SMVID_PG_SIZE_SHIFT)
++
++/* Major/Minor Version ID */
++#define SMVID_MAJ_VERS_SHIFT	8
++#define SMVID_MAJ_VERS		(0xf << SMVID_MAJ_VERS_SHIFT)
++#define SMVID_MIN_VERS_SHIFT	0
++#define SMVID_MIN_VERS		(0xf << SMVID_MIN_VERS_SHIFT)
++
+ /* LIODN programming for DMA configuration */
+ #define MSTRID_LOCK_LIODN	0x80000000
+ #define MSTRID_LOCK_MAKETRUSTED	0x00010000	/* only for JR masterid */
+@@ -245,7 +372,7 @@ struct rngtst {
+ 
+ /* RNG4 TRNG test registers */
+ struct rng4tst {
+-#define RTMCTL_PRGM	0x00010000	/* 1 -> program mode, 0 -> run mode */
++#define RTMCTL_PRGM 0x00010000	/* 1 -> program mode, 0 -> run mode */
+ 	u32 rtmctl;		/* misc. control register */
+ 	u32 rtscmisc;		/* statistical check misc. register */
+ 	u32 rtpkrrng;		/* poker range register */
+@@ -255,8 +382,6 @@ struct rng4tst {
+ 	};
+ #define RTSDCTL_ENT_DLY_SHIFT 16
+ #define RTSDCTL_ENT_DLY_MASK (0xffff << RTSDCTL_ENT_DLY_SHIFT)
+-#define RTSDCTL_ENT_DLY_MIN 1200
+-#define RTSDCTL_ENT_DLY_MAX 12800
+ 	u32 rtsdctl;		/* seed control register */
+ 	union {
+ 		u32 rtsblim;	/* PRGM=1: sparse bit limit register */
+@@ -268,12 +393,11 @@ struct rng4tst {
+ 		u32 rtfrqcnt;	/* PRGM=0: freq. count register */
+ 	};
+ 	u32 rsvd1[40];
+-#define RDSTA_SKVT 0x80000000
+-#define RDSTA_SKVN 0x40000000
+-#define RDSTA_IF0 0x00000001
+-#define RDSTA_IF1 0x00000002
+-#define RDSTA_IFMASK (RDSTA_IF1 | RDSTA_IF0)
+-	u32 rdsta;
++#define RDSTA_IF 0x00000003 /* state handle instantiated flags 0 and 1 */
++#define RDSTA_SKVN 0x40000000 /* Secure Key Valid Non-Test mode */
++#define RDSTA_SKVT 0x80000000 /* Secure Key Valid Test. non-test mode */
++#define RDSTA_TF   0x00000300 /* State handle instantiated Test-mode */
++	u32 rdsta;              /* DRNG status register */
+ 	u32 rsvd2[15];
+ };
+ 
+@@ -347,8 +471,6 @@ struct caam_ctrl {
+ #define MCFGR_DMA_RESET		0x10000000
+ #define MCFGR_LONG_PTR		0x00010000 /* Use >32-bit desc addressing */
+ #define SCFGR_RDBENABLE		0x00000400
+-#define DECORR_RQD0ENABLE	0x00000001 /* Enable DECO0 for direct access */
+-#define DECORR_DEN0		0x00010000 /* DECO0 available for access*/
+ 
+ /* AXI read cache control */
+ #define MCFGR_ARCACHE_SHIFT	12
+@@ -407,7 +529,18 @@ struct caam_job_ring {
+ 	u32 rsvd11;
+ 	u32 jrcommand;	/* JRCRx - JobR command */
+ 
+-	u32 rsvd12[932];
++	u32 rsvd12[33];
++
++	/* Secure Memory Configuration - if you have it */
++	u32 sm_cmd;	/* SMCJRx - Secure memory command */
++	u32 rsvd13;
++	u32 sm_status;	/* SMCSJRx - Secure memory status */
++	u32 rsvd14;
++	u32 sm_perm;	/* SMAPJRx - Secure memory access perms */
++	u32 sm_group2;	/* SMAP2JRx - Secure memory access group 2 */
++	u32 sm_group1;	/* SMAP1JRx - Secure memory access group 1 */
++
++	u32 rsvd15[891];
+ 
+ 	/* Performance Monitor                                  f00-fff */
+ 	struct caam_perfmon perfmon;
+@@ -530,6 +663,62 @@ struct caam_job_ring {
+ 
+ #define JRCR_RESET                  0x01
+ 
++/* secure memory command */
++#define SMC_PAGE_SHIFT	16
++#define SMC_PAGE_MASK	(0xffff << SMC_PAGE_SHIFT)
++#define SMC_PART_SHIFT	8
++#define SMC_PART_MASK	(0x0f << SMC_PART_SHIFT)
++#define SMC_CMD_SHIFT	0
++#define SMC_CMD_MASK	(0x0f << SMC_CMD_SHIFT)
++
++#define SMC_CMD_ALLOC_PAGE	0x01	/* allocate page to this partition */
++#define SMC_CMD_DEALLOC_PAGE	0x02	/* deallocate page from partition */
++#define SMC_CMD_DEALLOC_PART	0x03	/* deallocate partition */
++#define SMC_CMD_PAGE_INQUIRY	0x05	/* find partition associate with page */
++
++/* secure memory (command) status */
++#define SMCS_PAGE_SHIFT		16
++#define SMCS_PAGE_MASK		(0x0fff << SMCS_PAGE_SHIFT)
++#define SMCS_CMDERR_SHIFT	14
++#define SMCS_CMDERR_MASK	(3 << SMCS_CMDERR_SHIFT)
++#define SMCS_ALCERR_SHIFT	12
++#define SMCS_ALCERR_MASK	(3 << SMCS_ALCERR_SHIFT)
++#define SMCS_PGOWN_SHIFT	6
++#define SMCS_PGWON_MASK		(3 << SMCS_PGOWN_SHIFT)
++#define SMCS_PART_SHIFT		0
++#define SMCS_PART_MASK		(0xf << SMCS_PART_SHIFT)
++
++#define SMCS_CMDERR_NONE	0
++#define SMCS_CMDERR_INCOMP	1	/* Command not yet complete */
++#define SMCS_CMDERR_SECFAIL	2	/* Security failure occurred */
++#define SMCS_CMDERR_OVERFLOW	3	/* Command overflow */
++
++#define SMCS_ALCERR_NONE	0
++#define SMCS_ALCERR_PSPERR	1	/* Partion marked PSP (dealloc only) */
++#define SMCS_ALCERR_PAGEAVAIL	2	/* Page not available */
++#define SMCS_ALCERR_PARTOWN	3	/* Partition ownership error */
++
++#define SMCS_PGOWN_AVAIL	0	/* Page is available */
++#define SMCS_PGOWN_NOEXIST	1	/* Page initializing or nonexistent */
++#define SMCS_PGOWN_NOOWN	2	/* Page owned by another processor */
++#define SMCS_PGOWN_OWNED	3	/* Page belongs to this processor */
++
++/* secure memory access permissions */
++#define SMCS_PERM_KEYMOD_SHIFT	16
++#define SMCA_PERM_KEYMOD_MASK	(0xff << SMCS_PERM_KEYMOD_SHIFT)
++#define SMCA_PERM_CSP_ZERO	0x8000	/* Zero when deallocated or released */
++#define SMCA_PERM_PSP_LOCK	0x4000	/* Part./pages can't be deallocated */
++#define SMCA_PERM_PERM_LOCK	0x2000	/* Lock permissions */
++#define SMCA_PERM_GRP_LOCK	0x1000	/* Lock access groups */
++#define SMCA_PERM_RINGID_SHIFT	10
++#define SMCA_PERM_RINGID_MASK	(3 << SMCA_PERM_RINGID_SHIFT)
++#define SMCA_PERM_G2_BLOB	0x0080	/* Group 2 blob import/export */
++#define SMCA_PERM_G2_WRITE	0x0020	/* Group 2 write */
++#define SMCA_PERM_G2_READ	0x0010	/* Group 2 read */
++#define SMCA_PERM_G1_BLOB	0x0008	/* Group 1... */
++#define SMCA_PERM_G1_WRITE	0x0002
++#define SMCA_PERM_G1_READ	0x0001
++
+ /*
+  * caam_assurance - Assurance Controller View
+  * base + 0x6000 padded out to 0x1000
+@@ -698,7 +887,6 @@ struct caam_deco {
+ 	u32 jr_ctl_hi;	/* CxJRR - JobR Control Register      @800 */
+ 	u32 jr_ctl_lo;
+ 	u64 jr_descaddr;	/* CxDADR - JobR Descriptor Address */
+-#define DECO_OP_STATUS_HI_ERR_MASK 0xF00000FF
+ 	u32 op_status_hi;	/* DxOPSTA - DECO Operation Status */
+ 	u32 op_status_lo;
+ 	u32 rsvd24[2];
+@@ -712,17 +900,9 @@ struct caam_deco {
+ 	struct deco_sg_table sctr_tbl[4];	/* DxSTR - Scatter Tables */
+ 	u32 rsvd29[48];
+ 	u32 descbuf[64];	/* DxDESB - Descriptor buffer */
+-	u32 rscvd30[193];
+-#define DESC_DBG_DECO_STAT_HOST_ERR	0x00D00000
+-#define DESC_DBG_DECO_STAT_VALID	0x80000000
+-#define DESC_DBG_DECO_STAT_MASK		0x00F00000
+-	u32 desc_dbg;		/* DxDDR - DECO Debug Register */
+-	u32 rsvd31[126];
++	u32 rsvd30[320];
+ };
+ 
+-#define DECO_JQCR_WHL		0x20000000
+-#define DECO_JQCR_FOUR		0x10000000
+-
+ /*
+  * Current top-level view of memory map is:
+  *
+@@ -750,7 +930,6 @@ struct caam_full {
+ 	u64 rsvd[512];
+ 	struct caam_assurance assure;
+ 	struct caam_queue_if qi;
+-	struct caam_deco deco;
+ };
+ 
+ #endif /* REGS_H */
+diff --git a/drivers/crypto/caam/secvio.c b/drivers/crypto/caam/secvio.c
+index defd93c..6597ff5 100644
+--- a/drivers/crypto/caam/secvio.c
++++ b/drivers/crypto/caam/secvio.c
+@@ -198,8 +198,6 @@ int caam_secvio_startup(struct platform_device *pdev)
+ 	else
+ 		secvio_inten_src = HP_SECVIO_INTEN_ALL;
+ 
+-	printk(KERN_ERR "secvio_inten_src = %x\n", secvio_inten_src);
+-
+ 	svpdev = of_platform_device_create(np, NULL, ctrldev);
+ 	if (!svpdev)
+ 		return -ENODEV;
+diff --git a/drivers/crypto/caam/sg_sw_sec4.h b/drivers/crypto/caam/sg_sw_sec4.h
+index b12ff85..86673cb 100644
+--- a/drivers/crypto/caam/sg_sw_sec4.h
++++ b/drivers/crypto/caam/sg_sw_sec4.h
+@@ -1,7 +1,7 @@
+ /*
+  * CAAM/SEC 4.x functions for using scatterlists in caam driver
+  *
+- * Copyright 2008-2011 Freescale Semiconductor, Inc.
++ * Copyright (C) 2008-2013 Freescale Semiconductor, Inc.
+  *
+  */
+ 
+@@ -91,13 +91,22 @@ static int dma_map_sg_chained(struct device *dev, struct scatterlist *sg,
+ {
+ 	if (unlikely(chained)) {
+ 		int i;
++	struct scatterlist *tsg = sg;
++
++	/* We use a local copy of the sg pointer to avoid moving the
++	 * head of the list pointed to by sg as we wall the list.
++	 */
+ 		for (i = 0; i < nents; i++) {
+-			dma_map_sg(dev, sg, 1, dir);
+-			sg = scatterwalk_sg_next(sg);
++			dma_map_sg(dev, tsg, 1, dir);
++			tsg = scatterwalk_sg_next(tsg);
+ 		}
+ 	} else {
+ 		dma_map_sg(dev, sg, nents, dir);
+ 	}
++
++	if ((dir == DMA_TO_DEVICE) || (dir == DMA_BIDIRECTIONAL))
++		dma_sync_sg_for_device(dev, sg, nents, dir);
++
+ 	return nents;
+ }
+ 
+@@ -105,6 +114,9 @@ static int dma_unmap_sg_chained(struct device *dev, struct scatterlist *sg,
+ 				unsigned int nents, enum dma_data_direction dir,
+ 				bool chained)
+ {
++	if ((dir == DMA_FROM_DEVICE) || (dir == DMA_BIDIRECTIONAL))
++		dma_sync_sg_for_cpu(dev, sg, nents, dir);
++
+ 	if (unlikely(chained)) {
+ 		int i;
+ 		for (i = 0; i < nents; i++) {
+@@ -117,21 +129,6 @@ static int dma_unmap_sg_chained(struct device *dev, struct scatterlist *sg,
+ 	return nents;
+ }
+ 
+-/* Map SG page in kernel virtual address space and copy */
+-static inline void sg_map_copy(u8 *dest, struct scatterlist *sg,
+-			       int len, int offset)
+-{
+-	u8 *mapped_addr;
+-
+-	/*
+-	 * Page here can be user-space pinned using get_user_pages
+-	 * Same must be kmapped before use and kunmapped subsequently
+-	 */
+-	mapped_addr = kmap_atomic(sg_page(sg));
+-	memcpy(dest, mapped_addr + offset, len);
+-	kunmap_atomic(mapped_addr);
+-}
+-
+ /* Copy from len bytes of sg to dest, starting from beginning */
+ static inline void sg_copy(u8 *dest, struct scatterlist *sg, unsigned int len)
+ {
+@@ -139,15 +136,15 @@ static inline void sg_copy(u8 *dest, struct scatterlist *sg, unsigned int len)
+ 	int cpy_index = 0, next_cpy_index = current_sg->length;
+ 
+ 	while (next_cpy_index < len) {
+-		sg_map_copy(dest + cpy_index, current_sg, current_sg->length,
+-			    current_sg->offset);
++		memcpy(dest + cpy_index, (u8 *) sg_virt(current_sg),
++		       current_sg->length);
+ 		current_sg = scatterwalk_sg_next(current_sg);
+ 		cpy_index = next_cpy_index;
+ 		next_cpy_index += current_sg->length;
+ 	}
+ 	if (cpy_index < len)
+-		sg_map_copy(dest + cpy_index, current_sg, len-cpy_index,
+-			    current_sg->offset);
++		memcpy(dest + cpy_index, (u8 *) sg_virt(current_sg),
++		       len - cpy_index);
+ }
+ 
+ /* Copy sg data, from to_skip to end, to dest */
+@@ -155,7 +152,7 @@ static inline void sg_copy_part(u8 *dest, struct scatterlist *sg,
+ 				      int to_skip, unsigned int end)
+ {
+ 	struct scatterlist *current_sg = sg;
+-	int sg_index, cpy_index, offset;
++	int sg_index, cpy_index;
+ 
+ 	sg_index = current_sg->length;
+ 	while (sg_index <= to_skip) {
+@@ -163,10 +160,9 @@ static inline void sg_copy_part(u8 *dest, struct scatterlist *sg,
+ 		sg_index += current_sg->length;
+ 	}
+ 	cpy_index = sg_index - to_skip;
+-	offset = current_sg->offset + current_sg->length - cpy_index;
+-	sg_map_copy(dest, current_sg, cpy_index, offset);
+-	if (end - sg_index) {
+-		current_sg = scatterwalk_sg_next(current_sg);
++	memcpy(dest, (u8 *) sg_virt(current_sg) +
++	       current_sg->length - cpy_index, cpy_index);
++	current_sg = scatterwalk_sg_next(current_sg);
++	if (end - sg_index)
+ 		sg_copy(dest + cpy_index, current_sg, end - sg_index);
+-	}
+ }
+
+commit 6fdc64b8a368668bb9badb5ab7de8512711f2b8f
+Author: Matus Kral <matuskral@me.com>
+Date:   Wed Sep 24 03:34:07 2014 +0200
+
+    added devices needed by crypto/caam drivers
+
+diff --git a/arch/arm/boot/dts/imx6qdl.dtsi b/arch/arm/boot/dts/imx6qdl.dtsi
+index d3499f4..97c7001 100644
+--- a/arch/arm/boot/dts/imx6qdl.dtsi
++++ b/arch/arm/boot/dts/imx6qdl.dtsi
+@@ -90,6 +90,11 @@
+ 		interrupt-parent = <&intc>;
+ 		ranges;
+ 
++		caam_sm: caam-sm@00100000 {
++			compatible = "fsl,imx6q-caam-sm";
++			reg = <0x00100000 0x3fff>;
++		};
++
+ 		dma_apbh: dma-apbh@00110000 {
+ 			compatible = "fsl,imx6q-dma-apbh", "fsl,imx28-dma-apbh";
+ 			reg = <0x00110000 0x2000>;
+@@ -103,6 +108,12 @@
+ 			clocks = <&clks 106>;
+ 		};
+ 
++		irq_sec_vio: caam_secvio {
++			compatible = "fsl,imx6q-caam-secvio";
++			interrupts = <0 20 0x04>;
++			secvio_src = <0x8000001d>;
++		};
++
+ 		gpmi: gpmi-nand@00112000 {
+ 			compatible = "fsl,imx6q-gpmi-nand";
+ 			#address-cells = <1>;
+@@ -672,6 +683,11 @@
+ 				clock-names = "main_clk";
+ 			};
+ 
++			caam_snvs: caam-snvs@020cc000 {
++				compatible = "fsl,imx6q-caam-snvs";
++				reg = <0x020cc000 0x4000>;
++			};
++
+ 			snvs@020cc000 {
+ 				compatible = "fsl,sec-v4.0-mon", "simple-bus";
+ 				#address-cells = <1>;
