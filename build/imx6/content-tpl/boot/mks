@@ -1,4 +1,3 @@
 #!/bin/sh
 
-mkimage -A arm -O linux -T script -C none -n "U-Boot script" -d boot.scr.txt boot.scr
-
+mkimage -A arm -O linux -T script -C none -n "U-Boot script" -d /boot/boot.scr.txt /boot/boot.scr

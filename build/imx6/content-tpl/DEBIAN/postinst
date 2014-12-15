@@ -5,17 +5,15 @@ export KVER
 
 if [ $1 == "configure" ]; then
 
-        depmod -a $KVER
-
         [ -h /lib/modules/$KVER.xbian/build ] && mv /lib/modules/$KVER.xbian/build /lib/modules/$KVER
         [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian || true
 
         insserv -fr rng-tools &>/dev/null
         udevadm control --reload-rules || :
 
-        INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
-
         if [ "$(xbian-arch)" = iMX6 ]; then
+            [ ! -e /boot/mks ] || { rm -f /usr/local/sbin/mks; ln -s /boot/mks /usr/local/sbin/; :; }
+
             if [ -b /dev/mmcblk0 ]; then
                 echo "Updating u-boot"
                 dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
@@ -28,24 +26,39 @@ if [ $1 == "configure" ]; then
                 fi
             fi
 
-            [ -e /dev/root ] && rr=$(readlink -e /dev/root); [ -z "$rr" ] && $(findmnt -o source / -n)
-            if [ "$(blkid -o value -s TYPE $rr)" != btrfs ]; then
-                sed -i 's/setenv fstype btrfs/setenv fstype other/g' /boot/boot.scr.txt
-            else
-                sed -i 's/setenv fstype.*/setenv fstype btrfs/g' /boot/boot.scr.txt
-            fi
+            [ -e /dev/root ] && rr=$(readlink -e /dev/root); [ -z "$rr" ] && rr=$(findmnt -o source / -n)
+            [ -e $rr ] && fstype="$(blkid -o value -s TYPE $rr)" || fstype="$(findmnt -n -r -o FSTYPE /)"
+            case $fstype in
+                btrfs)
+                    ;;
+                zfs)
+                    fstype=other
+                    rr="ZFS=$rr"
+                    ;;
+                *)
+                    fstype=other
+                    ;;
+            esac
+            sed -i "s%setenv fstype.*%setenv fstype $fstype%" /boot/boot.scr.txt
 
             [ -n "$rr" ] && sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
             if [ -e /boot/boot.scr.txt.user ]; then
+                ### keep video= from previous conf
                 res=$(grep video=mxcfb0:dev= /boot/boot.scr.txt.user); res=${res##*video=mxcfb0\:dev=}; res=${res%% *};
                 sed -i "s%hdmi,1920x1080M@60,if=RGB24%$res%" /boot/boot.scr.txt
+
+                ### keep customcmdline from previous conf
+                ccl=$(grep 'setenv customcmdline' /boot/boot.scr.txt.user)
+                [ -z "$ccl" ] || sed -i "s%setenv customcmdline.*%$ccl%" /boot/boot.scr.txt
+
                 rm -f /boot/boot.scr.txt.user
             fi
             cd /boot; ./mks
 
-            #grep -q 'IRQBALANCE_BANNED_INTERRUPTS="147"' /etc/default/irqbalance || echo 'IRQBALANCE_BANNED_INTERRUPTS="147"' >>  /etc/default/irqbalance
             update-rc.d imx6-bluetooth defaults >/dev/null 2>&1
         fi
+
+        INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
 
 fi
 

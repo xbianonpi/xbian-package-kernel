@@ -18,10 +18,6 @@ eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1
 cd ../.zfs
 eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1
 
-mv $DEST/lib/modules/$kver/extra  $DEST/lib/modules/$kver/extra.old
-mkdir -p $DEST/lib/modules/$kver/extra/zfs-all
-find $DEST/lib/modules/$kver/extra.old -iname \*.ko | xargs cp -t $DEST/lib/modules/$kver/extra/zfs-all
-rm -fr $DEST/lib/modules/$kver/extra.old
 rm -fr $DEST/usr
 
 eval export $config_build_env 2>/dev/null && eval export $config_build_env
@@ -67,7 +63,7 @@ cat<<EOF>$DEST/DEBIAN/postinst
 
 if [ \$1 = "configure" ]; then
 
-	depmod -a
+	INITRD=No run-parts --new-session --report -a $kver /etc/kernel/postinst.d > /dev/null 2>&1
 
 fi
 EOF
@@ -79,7 +75,7 @@ kver=$kver
 
 if [ \$1 = "purge" -o \$1 = "remove" ]; then
 
-	[ ! -d /lib/modules/$kver/extra/zfs-all ] || rm -fr /lib/modules/$kver/extra/zfs-all
+	:
 
 fi
 EOF

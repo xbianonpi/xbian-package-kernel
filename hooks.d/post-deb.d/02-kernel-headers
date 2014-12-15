@@ -14,8 +14,6 @@ echo "... copying make/kconfig files"
 find ./ -iname Kconfig\* -o -iname Makefile\* -o -iname Kbuild\* -o -iname config | grep -v '\.uboot\|\.git\|\.zfs\|\.spl' | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
 echo "... copying .h files and helper scripts"
 find ./arch/$ARCH ./include ./scripts ./usr ./tools/include | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
-echo "... copying ARCH related files"
-( cd $DESTHEAD/arch/$ARCH/include; find ./ -iname \*.h | xargs cp -a --parents -t ../../../usr/include; ) 2>/dev/null
 cp -a -t $DESTHEAD .config Module.symvers
 ( cd $DESTHEAD/usr/include; find ./ -iname .install -o -iname ..install.cmd | xargs rm -f ; )
 
@@ -138,7 +136,7 @@ rm -f $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-libc-dev
-Version: ${kver%+}
+Version: ${kver%+}-${dver##*-}
 Section: kernel
 Essential: No
 Priority: optional
