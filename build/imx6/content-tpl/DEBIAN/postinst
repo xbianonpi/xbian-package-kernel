@@ -45,14 +45,16 @@ if [ $1 == "configure" ]; then
             if [ -e /boot/boot.scr.txt.user ]; then
                 ### keep video= from previous conf
                 res=$(grep video=mxcfb0:dev= /boot/boot.scr.txt.user); res=${res##*video=mxcfb0\:dev=}; res=${res%% *};
-                sed -i "s%hdmi,1920x1080M@60,if=RGB24%$res%" /boot/boot.scr.txt
+                sed -i "s%hdmi,1920x1080@60,if=RGB24%$res%" /boot/boot.scr.txt
 
                 ### keep customcmdline from previous conf
                 ccl=$(grep 'setenv customcmdline' /boot/boot.scr.txt.user)
+                echo $ccl | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
                 [ -z "$ccl" ] || sed -i "s%setenv customcmdline.*%$ccl%" /boot/boot.scr.txt
 
                 rm -f /boot/boot.scr.txt.user
             fi
+            [ ! -e /boot/boot.scr.txt.xbian ] || rm -f /boot/boot.scr.txt.xbian
             cd /boot; ./mks
 
             update-rc.d imx6-bluetooth defaults >/dev/null 2>&1
