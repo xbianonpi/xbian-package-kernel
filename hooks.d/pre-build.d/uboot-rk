@@ -1,0 +1,40 @@
+
+case $config_platform_branch in
+    rk*)
+        ;;
+    *)
+        return 0
+        ;;
+esac
+
+needcompile=yes
+
+if [ -d .uboot ]; then
+    cd .uboot
+
+    shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
+    sharem=$(git ls-remote -h git://github.com/radxa/u-boot-rockchip.git u-boot-rk3188 | awk '{print $1}')
+
+    if [ $sharem != $shaloc ]; then
+        git clean -dfx  >/dev/null 2>&1
+        git fetch
+        git reset --hard origin/u-boot-rk3188
+    else
+        needcompile=no
+    fi
+else
+    git clone -b u-boot-rk3188 --depth=1 --single-branch git://github.com/radxa/u-boot-rockchip.git .uboot
+    cd .uboot
+fi
+
+[ $needcompile = yes ] || return 0
+
+echo "BUILDING U-BOOT... Please wait"
+
+eval $config_build_env make rk30xx
+
+set +e
+
+echo "U-BOOT compiled."
+
+cp u-boot.bin ../../content-tpl/etc/uboot-env

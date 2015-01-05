@@ -42,6 +42,21 @@ Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
 EOF
         ;;
+		rk*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-zfs-${kver%+}-armmp
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: linux-image-${kver%+}-armmp (= $dver)
+Conflicts: linux-zfs-${kver%+}
+Maintainer: CurlyMo <development@xbian.org>
+Description: kernel zfs modules ($kver)
+EOF
+        ;;
     rpi*)
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian

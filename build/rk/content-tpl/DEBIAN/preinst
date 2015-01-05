@@ -1,0 +1,16 @@
+#!/bin/bash
+
+KVER="__KVER__"
+export KVER
+
+if [ $1 == "install" -o $1 == "upgrade" ]; then
+
+        INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/preinst.d/ > /dev/null 2>&1
+
+        [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian
+        [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
+        [ -d /lib/modules/$KVER.xbian/extra ] && { mkdir -p /lib/modules/$KVER; mv /lib/modules/$KVER.xbian/extra /lib/modules/$KVER; } || :
+
+fi
+
+exit 0

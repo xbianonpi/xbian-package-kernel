@@ -39,6 +39,23 @@ Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
 EOF
         ;;
+    rk*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-headers-${kver%+}-armmp
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: make, gcc, linux-image-${kver%+}-armmp (= $dver)
+Provides: linux-headers, linux-headers-${kver%+}
+Conflicts: linux-headers, linux-headers-${kver%+}
+Suggests: dkms
+Maintainer: mk01 <development@xbian.org>
+Description: kernel headers ($kver)
+EOF
+        ;;				
     rpi*)
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
