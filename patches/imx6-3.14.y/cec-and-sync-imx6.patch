@@ -23,7 +23,7 @@ index 43ccd29..aa6362f 100644
  	hdmi->cable_plugin = false;
  }
 diff --git a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
-index e53510f..1e51a05 100644
+index e53510f..295ee19 100644
 --- a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
 +++ b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
 @@ -46,88 +46,71 @@
@@ -360,7 +360,7 @@ index e53510f..1e51a05 100644
  	mutex_unlock(&hdmi_cec_data.lock);
  	return 0;
  }
-@@ -262,153 +252,174 @@ static int hdmi_cec_open(struct inode *inode, struct file *filp)
+@@ -262,153 +252,172 @@ static int hdmi_cec_open(struct inode *inode, struct file *filp)
  static ssize_t hdmi_cec_read(struct file *file, char __user *buf, size_t count,
  			    loff_t *ppos)
  {
@@ -491,22 +491,20 @@ index e53510f..1e51a05 100644
 +	mutex_lock(&hdmi_cec->lock);
 +	pr_debug("function : %s\n", __func__);
 +	hdmi_cec->write_busy = true;
- 
--	if (hdmi_cec_data.tx_answer & HDMI_IH_CEC_STAT0_DONE)
--		/* msg correctly sent */
--		ret = msg_len;
--	else
--		ret =  -EIO;
++
 +	hdmi_writeb(count, HDMI_CEC_TX_CNT);
 +	for (i = 0; i < count; i++)
 +		hdmi_writeb(msg[i], HDMI_CEC_TX_DATA0+i);
 +
 +	do {
 +		val = hdmi_readb(HDMI_CEC_CTRL) | 0x01;
-+		spin_lock_irqsave(&hdmi_cec->irq_lock, flags);
 +		hdmi_writeb(val, HDMI_CEC_CTRL);
-+		spin_unlock_irqrestore(&hdmi_cec->irq_lock, flags);
-+
+ 
+-	if (hdmi_cec_data.tx_answer & HDMI_IH_CEC_STAT0_DONE)
+-		/* msg correctly sent */
+-		ret = msg_len;
+-	else
+-		ret =  -EIO;
 +		ret = wait_event_timeout(hdmi_cec_sent, !((val = hdmi_readb(HDMI_CEC_CTRL)) & 0x01), msecs_to_jiffies(timeout));
 +		pr_debug("function : %s wait_event ret %d\n", __func__, ret);
 +		if (hdmi_cec->send_error > 5 || ret < 2) {
@@ -631,7 +629,7 @@ index e53510f..1e51a05 100644
  
  /*!
   * @brief IO ctrl function for vpu file operation
-@@ -418,77 +429,87 @@ EXPORT_SYMBOL(hdmi_cec_stop_device);
+@@ -418,77 +427,87 @@ EXPORT_SYMBOL(hdmi_cec_stop_device);
  static long hdmi_cec_ioctl(struct file *filp, u_int cmd,
  		     u_long arg)
  {
@@ -763,7 +761,7 @@ index e53510f..1e51a05 100644
  	return 0;
  }
  
-@@ -496,20 +517,16 @@ static unsigned int hdmi_cec_poll(struct file *file, poll_table *wait)
+@@ -496,20 +515,16 @@ static unsigned int hdmi_cec_poll(struct file *file, poll_table *wait)
  {
  	unsigned int mask = 0;
  
@@ -789,7 +787,7 @@ index e53510f..1e51a05 100644
  const struct file_operations hdmi_cec_fops = {
  	.owner = THIS_MODULE,
  	.read = hdmi_cec_read,
-@@ -534,7 +551,7 @@ static int hdmi_cec_dev_probe(struct platform_device *pdev)
+@@ -534,7 +549,7 @@ static int hdmi_cec_dev_probe(struct platform_device *pdev)
  		err = -EBUSY;
  		goto out;
  	}
@@ -798,7 +796,7 @@ index e53510f..1e51a05 100644
  	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
  	if (unlikely(res == NULL)) {
  		dev_err(&pdev->dev, "hdmi_cec:No HDMI irq line provided\n");
-@@ -555,8 +572,8 @@ static int hdmi_cec_dev_probe(struct platform_device *pdev)
+@@ -555,8 +570,8 @@ static int hdmi_cec_dev_probe(struct platform_device *pdev)
  		goto err_out_chrdev;
  	}
  
@@ -809,7 +807,7 @@ index e53510f..1e51a05 100644
  	if (IS_ERR(temp_class)) {
  		err = PTR_ERR(temp_class);
  		goto err_out_class;
-@@ -569,13 +586,11 @@ static int hdmi_cec_dev_probe(struct platform_device *pdev)
+@@ -569,13 +584,11 @@ static int hdmi_cec_dev_probe(struct platform_device *pdev)
  	}
  
  	init_waitqueue_head(&hdmi_cec_queue);
@@ -825,7 +823,7 @@ index e53510f..1e51a05 100644
  	platform_set_drvdata(pdev, &hdmi_cec_data);
  	INIT_DELAYED_WORK(&hdmi_cec_data.hdmi_cec_work, mxc_hdmi_cec_worker);
  
-@@ -594,14 +609,12 @@ out:
+@@ -594,14 +607,12 @@ out:
  
  static int hdmi_cec_dev_remove(struct platform_device *pdev)
  {
@@ -841,7 +839,7 @@ index e53510f..1e51a05 100644
  	return 0;
  }
  
-@@ -615,9 +628,9 @@ static struct platform_driver mxc_hdmi_cec_driver = {
+@@ -615,9 +626,9 @@ static struct platform_driver mxc_hdmi_cec_driver = {
  	.probe = hdmi_cec_dev_probe,
  	.remove = hdmi_cec_dev_remove,
  	.driver = {
