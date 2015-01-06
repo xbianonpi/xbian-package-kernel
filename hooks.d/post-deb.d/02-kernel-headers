@@ -31,7 +31,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: make, gcc, linux-image-${kver%+}-armmp (= $dver)
+Depends: libc6-dev, make, gcc, linux-image-${kver%+}-armmp (= $dver)
 Provides: linux-headers, linux-headers-${kver%+}
 Conflicts: linux-headers, linux-headers-${kver%+}
 Suggests: dkms
@@ -48,14 +48,14 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: make, gcc, linux-image-${kver%+}-armmp (= $dver)
+Depends: libc6-dev, make, gcc, linux-image-${kver%+}-armmp (= $dver)
 Provides: linux-headers, linux-headers-${kver%+}
 Conflicts: linux-headers, linux-headers-${kver%+}
 Suggests: dkms
 Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
 EOF
-        ;;				
+        ;;
     rpi*)
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
@@ -65,7 +65,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: make, gcc, xbian-package-kernel (= $dver)
+Depends: libc6-dev, make, gcc, xbian-package-kernel (= $dver)
 Provides: linux-headers, linux-headers-$kver
 Conflicts: linux-headers, linux-headers-$kver
 Suggests: dkms
