@@ -10,7 +10,7 @@ setenv baseconfig console=ttymxc0,115200 console=tty1 coherent_pool=1M rw ahci_i
 if test ${fstype} != btrfs; then
     setenv bootargs $baseconfig $customcmdline rootfstype=ext4 rootflags=data=writeback --startup-event mountall
 else
-    setenv bootargs $baseconfig $customcmdline rootfstype=btrfs rootflags=subvol=root/@,autodefrag,compress=lz4 --startup-event mountall
+    setenv bootargs $baseconfig $customcmdline rootfstype=btrfs rootflags=subvol=root/@,autodefrag,compress=lz4,commit=120 --startup-event mountall
 fi
 
 if test ${debug} != ""; then exit 1; fi
