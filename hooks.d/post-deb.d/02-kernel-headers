@@ -25,13 +25,13 @@ case $config_platform_branch in
     imx6*)
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
-Package: linux-headers-${kver%+}-armmp
+Package: linux-headers-armmp
 Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: libc6-dev, make, gcc, linux-image-${kver%+}-armmp (= $dver)
+Depends: libc6-dev, make, gcc, linux-image-armmp (= $dver)
 Provides: linux-headers, linux-headers-${kver%+}
 Conflicts: linux-headers, linux-headers-${kver%+}
 Suggests: dkms

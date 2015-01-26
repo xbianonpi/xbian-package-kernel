@@ -28,16 +28,13 @@ case $config_platform_branch in
     imx6*)
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
-Package: linux-zfs-${kver%+}-armmp
+Package: linux-zfs-armmp
 Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: linux-image-${kver%+}-armmp (= $dver)
-Conflicts: linux-zfs-${kver%+}, linux-zfs-3.14.27-armmp, linux-zfs-3.14.14-armmp (<<3.0.0~)
-Breaks: linux-zfs-3.14.14-armmp (<<3.0.0~)
-Replaces: linux-zfs-3.14.14-armmp (<<3.0.0~)
+Depends: linux-image-armmp (= $dver)
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
 EOF
