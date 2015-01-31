@@ -1,0 +1,29 @@
+setenv fstype btrfs
+
+####################
+### user configuration should be added to the following line. it will be preserved during updates of this file. 
+setenv customcmdline 
+####################
+
+setenv baseconfig console=ttyS0,115200 console=tty1 rw telnet root=/dev/mmcblk0p2 disp.screen0_output_mode=EDID:1280x720p50 rootwait partswap
+
+if test ${fstype} != btrfs; then
+    setenv bootargs ${baseconfig} ${customcmdline} rootfstype=ext4 rootflags=data=writeback
+else
+    setenv bootargs ${baseconfig} ${customcmdline} rootfstype=btrfs rootflags=subvol=root/@,autodefrag,compress=lz4,commit=120
+fi
+
+if test ${debug} != ""; then exit 1; fi
+
+fatload mmc 0 0x43000000 script.bin
+fatload mmc 0 0x48000000 zImage
+
+if fatload mmc 0:1 0x45000000 initramfs.gz; then
+    setenv initram 0x45000000
+else
+    setenv initram "-"
+fi
+
+if test ${debug} != ""; then exit 1; fi
+
+bootz 0x48000000 0x45000000 

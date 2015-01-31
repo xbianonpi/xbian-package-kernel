@@ -1,0 +1,11 @@
+Origin: XBian
+Package: __PKGNAME__
+Version: __VERSION__
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+__PKGDEPS__
+__CTRLEXTRA__
+Maintainer: mk01 <development@xbian.org>
+Description: Latest XBian kernel (__ARCHBRANCH__ __KVER__)

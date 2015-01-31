@@ -1,0 +1,65 @@
+
+case $config_platform_branch in
+    bpi*)
+        ;;
+    *)
+        return 0
+        ;;
+esac
+
+needcompile=yes
+
+if [ -d .tools ]; then
+    cd .tools
+
+    shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
+    sharem=$(git ls-remote -h git://github.com/LeMaker/sunxi-tools.git master | awk '{print $1}')
+
+    if [ $sharem != $shaloc ]; then
+        git clean -dfx  >/dev/null 2>&1
+        git fetch
+        git reset --hard origin/master
+    else
+        needcompile=no
+    fi
+else
+    git clone -b master --depth=1 --single-branch git://github.com/LeMaker/sunxi-tools.git .tools
+    cd .tools
+fi
+
+needcompile=yes
+
+[ $needcompile = yes ] || return 0
+
+echo "BUILDING SUNXI TOOLS... Please wait"
+
+eval $config_build_env make
+
+set +e
+
+echo "SUNXI TOOLS compiled."
+
+cd ..
+
+if [ -d .boards ]; then
+    cd .boards
+
+    shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
+    sharem=$(git ls-remote -h git://github.com/LeMaker/sunxi-boards.git master | awk '{print $1}')
+
+    if [ $sharem != $shaloc ]; then
+        git clean -dfx  >/dev/null 2>&1
+        git fetch
+        git reset --hard origin/master
+    else
+        needcompile=no
+    fi
+else
+    git clone -b master --depth=1 --single-branch git://github.com/LeMaker/sunxi-boards.git .boards
+    cd .boards
+fi
+
+[ $needcompile = yes ] || return 0
+
+../.tools/fex2bin sys_config/a20/BananaPro.fex script.bin
+cp script.bin ../../content-tpl/boot/

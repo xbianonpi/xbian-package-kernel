@@ -1,3 +1,10 @@
+case $config_platform_branch in
+    bpi*)
+        return 0		
+        ;;
+    *)
+        ;;
+esac
 
 ttmp=$(mktemp -d -u)
 mkdir -p $ttmp

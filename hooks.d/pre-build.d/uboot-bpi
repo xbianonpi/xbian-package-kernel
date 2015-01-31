@@ -1,0 +1,41 @@
+
+case $config_platform_branch in
+    bpi*)
+        ;;
+    *)
+        return 0
+        ;;
+esac
+
+needcompile=yes
+
+if [ -d .uboot ]; then
+    cd .uboot
+
+    shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
+    sharem=$(git ls-remote -h git://github.com/LeMaker/u-boot-sunxi.git lemaker | awk '{print $1}')
+
+    if [ $sharem != $shaloc ]; then
+        git clean -dfx  >/dev/null 2>&1
+        git fetch
+        git reset --hard origin/lemaker
+    else
+        needcompile=no
+    fi
+else
+    git clone -b lemaker --depth=1 --single-branch git://github.com/LeMaker/u-boot-sunxi.git .uboot
+    cd .uboot
+fi
+
+[ $needcompile = yes ] || return 0
+
+echo "BUILDING U-BOOT... Please wait"
+
+eval $config_build_env make BananaPro_config
+eval $config_build_env make
+
+set +e
+
+echo "U-BOOT compiled."
+
+cp u-boot-sunxi-with-spl.bin ../../content-tpl/etc/uboot-env

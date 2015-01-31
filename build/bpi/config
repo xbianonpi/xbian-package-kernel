@@ -1,0 +1,5 @@
+config_source_configure=
+config_build_env=CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm MACH=sun7i
+config_source_branch=lemaker-3.4
+config_source_addr=git://github.com/lemaker/linux-sunxi.git
+config_deb_depends=
