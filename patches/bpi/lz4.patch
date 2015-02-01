@@ -883,7 +883,7 @@ index d71a11d..224de19 100644
 +	if (range->compress_type == BTRFS_COMPRESS_LZ4 ||
 +	    range->compress_type == BTRFS_COMPRESS_LZ4HC) {
 +		features |= BTRFS_FEATURE_INCOMPAT_COMPRESS_LZ4;
-+		btrfs_set_fs_incompat(root->fs_info, COMPRESS_LZ4);
++		btrfs_set_super_incompat_flags(disk_super, features);
 +	}
 +
  	ret = defrag_count;
