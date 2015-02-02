@@ -57,32 +57,18 @@ EOF
 		bpi*)
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
-Package: linux-zfs-${kver%+}-armmp
-Version: $dver
-Section: kernel
-Essential: No
-Priority: optional
-Architecture: armhf
-Depends: linux-image-${kver%+}-armmp (= $dver)
-Conflicts: linux-zfs-${kver%+}
-Maintainer: CurlyMo <development@xbian.org>
-Description: kernel zfs modules ($kver)
-EOF
-        ;;				
-    rpi*)
-cat<<EOF>$DEST/DEBIAN/control
-Origin: XBian
-Package: linux-zfs-${kver%+}
+Package: xbian-package-linux-zfs
 Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
 Depends: xbian-package-kernel (= $dver)
+Conflicts: linux-zfs-${kver%+}
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
 EOF
-        ;;
+        ;;				
     *)
         ;;
 esac

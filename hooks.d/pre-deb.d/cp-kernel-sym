@@ -4,7 +4,7 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
 dver=$(cat ../build/$config_platform_branch/config | grep config_deb_version | awk -F'=' '{print $2}')
 
 case $config_platform_branch in
-    imx6*|rk*)
+    imx6*|rk*|bpi*)
         cp ../build/$config_platform_branch/working/System.map ./boot/System.map
         cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot/zImage
         ;;

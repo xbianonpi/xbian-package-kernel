@@ -11,38 +11,13 @@ if [ $1 == "configure" ]; then
         insserv -fr rng-tools &>/dev/null
         udevadm control --reload-rules || :
 
-        if [ "$(xbian-arch)" = BPi ]; then
+        if [ "$(xbian-arch)" = BPI ]; then
             [ ! -e /boot/mks ] || { rm -f /usr/local/sbin/mks; ln -s /boot/mks /usr/local/sbin/; :; }
 
             if [ -b /dev/mmcblk0 ]; then
                 echo "Updating u-boot"
-                dd if=/etc/uboot-env/u-boot-sunxi-with-spl.bin of=/dev/mmcblk0 bs=1024 seek=8 conv=fsync #,notrunc
-                # if [ ! -e /boot/noenv ]; then
-                    # uboot-env del -i || uboot-env del -I
-                    # uboot-env set < /etc/uboot-env/default.txt
-                    # uboot-env set script boot.scr
-                    # uboot-env set bootdelay 0
-                # fi
+                dd if=/etc/uboot-env/u-boot-sunxi-with-spl.bin of=/dev/mmcblk0 bs=1024 seek=8 conv=fsync
             fi
-
-            [ -e /dev/root ] && rr=$(readlink -e /dev/root); [ -z "$rr" ] && rr=$(findmnt -o source / -n)
-            [ -e $rr ] && fstype="$(blkid -o value -s TYPE $rr)" || fstype="$(findmnt -n -r -o FSTYPE /)"
-            case $fstype in
-                btrfs)
-                    ;;
-                zfs)
-                    fstype=other
-                    rr="ZFS=$rr"
-                    ;;
-                *)
-                    fstype=other
-                    ;;
-            esac
-            sed -i "s%setenv fstype.*%setenv fstype $fstype%" /boot/boot.scr.txt
-
-            [ -n "$rr" ] && sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
-            [ ! -e /boot/boot.scr.txt.xbian ] || rm -f /boot/boot.scr.txt.xbian
-            cd /boot; ./mks
         fi
 
         INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1

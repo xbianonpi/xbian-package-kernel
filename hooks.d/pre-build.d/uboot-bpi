@@ -38,4 +38,4 @@ set +e
 
 echo "U-BOOT compiled."
 
-cp u-boot-sunxi-with-spl.bin ../../content-tpl/etc/uboot-env
+cp u-boot-sunxi-with-spl.bin ../../content-tpl/etc/uboot-env/

@@ -1,0 +1,5 @@
+bootargs=console=ttyS0,115200 disp.screen0_output_mode=EDID:1280x720p50 hdmi.audio=EDID:0 console=ttyS0 root=/dev/mmcblk0p2 rootfstype=btrfs rootflags=subvol=root/@,autodefrag,compress=lz4,commit=120 elevator=deadline rootwait keepinitrd
+aload_script=ext2load mmc 0 0x43000000 script.bin;
+aload_kernel=ext2load mmc 0 0x41000000 zImage;
+aload_initrd=ext2load mmc 0 0x45000000 initramfs.gz; bootz 0x41000000 0x45000000;
+uenvcmd=run aload_script aload_kernel aload_initrd

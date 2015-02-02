@@ -5,7 +5,6 @@ KVER=__KVER__
 if [ $1 = "remove" -o $1 = purge ]; then
 
     [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
-    [ -e /boot/boot.scr.txt ] && cp /boot/boot.scr.txt /boot/boot.scr.txt.xbian || :
 
 fi
 

@@ -12,11 +12,6 @@ if [ $1 == "install" -o $1 == "upgrade" ]; then
         [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
         [ -d /lib/modules/$KVER.xbian/extra ] && { mkdir -p /lib/modules/$KVER; mv /lib/modules/$KVER.xbian/extra /lib/modules/$KVER; } || :
 
-        if [ "$(xbian-arch)" = iMX6 ]; then
-            [ -e /boot/boot.scr.txt.xbian ] && cp /boot/boot.scr.txt.xbian /boot/boot.scr.txt.user
-            [ -e /boot/boot.scr.txt ] && cp /boot/boot.scr.txt /boot/boot.scr.txt.user
-        fi
-
 fi
 
 exit 0
