@@ -68,7 +68,21 @@ Conflicts: linux-zfs-${kver%+}
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
 EOF
-        ;;				
+        ;;
+        	rpi2*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-zfs-bcm2836
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: linux-image-bcm2836 (= $dver)
+Maintainer: CurlyMo <development@xbian.org>
+Description: kernel zfs modules ($kver)
+EOF
+        ;;
     *)
         ;;
 esac
