@@ -73,23 +73,6 @@ Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
 EOF
         ;;
-    rpi*)
-cat<<EOF>$DEST/DEBIAN/control
-Origin: XBian
-Package: xbian-package-kernel-headers
-Version: $dver
-Section: kernel
-Essential: No
-Priority: optional
-Architecture: armhf
-Depends: libc6-dev, make, gcc, xbian-package-kernel (= $dver)
-Provides: linux-headers, linux-headers-$kver
-Conflicts: linux-headers, linux-headers-$kver
-Suggests: dkms
-Maintainer: mk01 <development@xbian.org>
-Description: kernel headers ($kver)
-EOF
-        ;;
     rpi2*)
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
@@ -100,6 +83,23 @@ Essential: No
 Priority: optional
 Architecture: armhf
 Depends: libc6-dev, make, gcc, linux-image-bcm2836 (= $dver)
+Provides: linux-headers, linux-headers-$kver
+Conflicts: linux-headers, linux-headers-$kver
+Suggests: dkms
+Maintainer: mk01 <development@xbian.org>
+Description: kernel headers ($kver)
+EOF
+        ;;
+    rpi*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: xbian-package-kernel-headers
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: libc6-dev, make, gcc, xbian-package-kernel (= $dver)
 Provides: linux-headers, linux-headers-$kver
 Conflicts: linux-headers, linux-headers-$kver
 Suggests: dkms
