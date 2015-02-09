@@ -9,8 +9,8 @@ case $config_platform_branch in
         cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot/zImage
         ;;
     rpi*)
-        cp ../build/$config_platform_branch/working/System.map ./boot/System.map-$kver
-        cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot/kernel.img-$kver
+        cp ../build/$config_platform_branch/working/System.map ./boot-new/System.map-$kver
+        cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot-new/kernel.img-$kver
         ;;
     *)
         ;;
