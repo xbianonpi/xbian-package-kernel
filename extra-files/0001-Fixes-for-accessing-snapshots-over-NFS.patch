@@ -1,0 +1,607 @@
+From f98dcba54b681c362641c118221be816dbacad53 Mon Sep 17 00:00:00 2001
+From: Andrey Vesnovaty <andrey.vesnovaty@gmail.com>
+Date: Thu, 8 Aug 2013 12:52:30 +0300
+Subject: [PATCH] Fixes for accessing snapshots over NFS.
+
+---
+ config/kernel-kern-path.m4 |  19 ++++
+ config/kernel.m4           |   1 +
+ include/sys/zfs_ctldir.h   |   2 +
+ include/sys/zfs_vfsops.h   |   1 +
+ module/zfs/zfs_ctldir.c    | 250 ++++++++++++++++++++++++++++++++++++---------
+ module/zfs/zfs_vfsops.c    |  36 +++++--
+ module/zfs/zfs_vnops.c     |  39 +++++--
+ module/zfs/zpl_export.c    |   7 +-
+ module/zfs/zpl_inode.c     |  12 ---
+ 10 files changed, 289 insertions(+), 85 deletions(-)
+ create mode 100644 config/kernel-kern-path.m4
+
+diff --git a/config/kernel-kern-path.m4 b/config/kernel-kern-path.m4
+new file mode 100644
+index 0000000..8e378d5
+--- /dev/null
++++ b/config/kernel-kern-path.m4
+@@ -0,0 +1,19 @@
++dnl #
++dnl # 2.6.38 API change
++dnl # path_lookup is no longer available in 2.6.38, we have to use kern_path.
++dnl # Since kern_path is available before the deletion of path_lookup, we check
++dnl # for kern_path instead and use it when possible.
++dnl #
++AC_DEFUN([ZFS_AC_KERNEL_KERN_PATH],
++	[AC_MSG_CHECKING([whether kern_path() is available])
++	ZFS_LINUX_TRY_COMPILE_SYMBOL([
++		#include <linux/namei.h>
++	], [
++		kern_path(NULL, 0, NULL);
++	], [kern_path], [fs/namei.c], [
++		AC_MSG_RESULT(yes)
++		AC_DEFINE(HAVE_KERN_PATH, 1, [kern_path() is available])
++	], [
++		AC_MSG_RESULT(no)
++	])
++])
+diff --git a/config/kernel.m4 b/config/kernel.m4
+index 67a4ef6..a625bee 100644
+--- a/config/kernel.m4
++++ b/config/kernel.m4
+@@ -95,6 +95,7 @@ AC_DEFUN([ZFS_AC_CONFIG_KERNEL], [
+ 	ZFS_AC_KERNEL_5ARG_SGET
+ 	ZFS_AC_KERNEL_LSEEK_EXECUTE
+ 	ZFS_AC_KERNEL_VFS_ITERATE
++	ZFS_AC_KERNEL_KERN_PATH
+ 
+ 	AS_IF([test "$LINUX_OBJ" != "$LINUX"], [
+ 		KERNELMAKE_PARAMS="$KERNELMAKE_PARAMS O=$LINUX_OBJ"
+diff --git a/include/sys/zfs_ctldir.h b/include/sys/zfs_ctldir.h
+index 1ff23a2..83ed700 100644
+--- a/include/sys/zfs_ctldir.h
++++ b/include/sys/zfs_ctldir.h
+@@ -52,12 +52,14 @@ typedef struct {
+ 	struct inode		*se_inode;
+ 	taskqid_t		se_taskqid;
+ 	avl_node_t		se_node;
++	struct dentry		*se_root_dentry;
+ } zfs_snapentry_t;
+ 
+ /* zfsctl generic functions */
+ extern int snapentry_compare(const void *a, const void *b);
+ extern boolean_t zfsctl_is_node(struct inode *ip);
+ extern boolean_t zfsctl_is_snapdir(struct inode *ip);
++extern boolean_t zfsctl_is_ctl(struct inode *ip);
+ extern void zfsctl_inode_inactive(struct inode *ip);
+ extern void zfsctl_inode_destroy(struct inode *ip);
+ extern int zfsctl_create(zfs_sb_t *zsb);
+diff --git a/include/sys/zfs_vfsops.h b/include/sys/zfs_vfsops.h
+index eeeffbe..1622da9 100644
+--- a/include/sys/zfs_vfsops.h
++++ b/include/sys/zfs_vfsops.h
+@@ -92,6 +92,7 @@ typedef struct zfs_sb {
+ 	sa_attr_type_t	*z_attr_table;	/* SA attr mapping->id */
+ #define	ZFS_OBJ_MTX_SZ	256
+ 	kmutex_t	z_hold_mtx[ZFS_OBJ_MTX_SZ];	/* znode hold locks */
++	char		z_mnt_path[PATH_MAX];	/* path where this sb mounted */
+ } zfs_sb_t;
+ 
+ #define	ZFS_SUPER_MAGIC	0x2fc12fc1
+diff --git a/module/zfs/zfs_ctldir.c b/module/zfs/zfs_ctldir.c
+index 59405de..6f7418d 100644
+--- a/module/zfs/zfs_ctldir.c
++++ b/module/zfs/zfs_ctldir.c
+@@ -81,10 +81,14 @@
+ #include <sys/zfs_vnops.h>
+ #include <sys/stat.h>
+ #include <sys/dmu.h>
++#include <sys/dmu_objset.h>
+ #include <sys/dsl_destroy.h>
+ #include <sys/dsl_deleg.h>
++#include <sys/dsl_dataset.h>
++#include <sys/dsl_prop.h>
+ #include <sys/mount.h>
+ #include <sys/zpl.h>
++#include <sys/nvpair.h>
+ #include "zfs_namecheck.h"
+ 
+ /*
+@@ -157,6 +161,14 @@ zfsctl_is_snapdir(struct inode *ip)
+ 	return (zfsctl_is_node(ip) && (ip->i_ino <= ZFSCTL_INO_SNAPDIRS));
+ }
+ 
++boolean_t
++zfsctl_is_ctl(struct inode *ip)
++{
++	return (zfsctl_is_node(ip) && (ip->i_ino == ZFSCTL_INO_ROOT ||
++			ip->i_ino == ZFSCTL_INO_SNAPDIR ||
++			ip->i_ino == ZFSCTL_INO_SHARES));
++}
++
+ /*
+  * Allocate a new inode with the passed id and ops.
+  */
+@@ -820,6 +832,7 @@ zfsctl_mount_snapshot(struct path *path, int flags)
+ 	char *argv[] = { "/bin/sh", "-c", NULL, NULL };
+ 	char *envp[] = { NULL };
+ 	int error;
++	struct path mnt_path = *path;
+ 
+ 	ZFS_ENTER(zsb);
+ 
+@@ -859,6 +872,26 @@ zfsctl_mount_snapshot(struct path *path, int flags)
+ 	error = 0;
+ 	mutex_enter(&zsb->z_ctldir_lock);
+ 
++	path_get(&mnt_path);
++	error = follow_down(&mnt_path);
++	if (error) {
++		printk("ZFS: cannot follow down snapshot mountpoint: %s, "
++			"err %d\n", full_path, error);
++		goto mutex_error;
++	}
++	if (mnt_path.mnt == path->mnt) {
++		printk("ZFS: snapshot %s auto mounted at %s unexpectedly "
++			"unmounted\n", full_name, full_path);
++		error = ENOENT;
++		goto mutex_error;
++	}
++
++	/*
++	 * Ensure MNT_SHRINKABLE is set on snapshots to ensure they are
++	 * unmounted automatically with the parent file system.
++	 */
++	mnt_path.mnt->mnt_flags |= MNT_SHRINKABLE;
++
+ 	/*
+ 	 * Ensure a previous entry does not exist, if it does safely remove
+ 	 * it any cancel the outstanding expiration.  This can occur when a
+@@ -876,12 +909,15 @@ zfsctl_mount_snapshot(struct path *path, int flags)
+ 	sep->se_name = full_name;
+ 	sep->se_path = full_path;
+ 	sep->se_inode = ip;
++	sep->se_root_dentry = mnt_path.dentry;
+ 	avl_add(&zsb->z_ctldir_snaps, sep);
+ 
+ 	sep->se_taskqid = taskq_dispatch_delay(zfs_expire_taskq,
+ 	    zfsctl_expire_snapshot, sep, TQ_SLEEP,
+ 	    ddi_get_lbolt() + zfs_expire_snapshot * HZ);
+ 
++mutex_error:
++	path_put(&mnt_path);
+ 	mutex_exit(&zsb->z_ctldir_lock);
+ error:
+ 	if (error) {
+@@ -894,77 +930,197 @@ error:
+ 	return (error);
+ }
+ 
+-/*
+- * Check if this super block has a matching objset id.
+- */
++static char *
++zfsctl_get_mnt_path(zfs_sb_t *zsb)
++{
++	int error, altroot_len;
++	nvlist_t *nvp = NULL, *nv = NULL;
++	char *path = NULL, *relpath = NULL, *dname = NULL;
++	char *altroot = NULL, *setpoint = NULL;
++
++	if (zsb->z_mnt_path[0] != 0)
++		return (zsb->z_mnt_path);
++
++	path = kmem_alloc(MAXPATHLEN, KM_PUSHPAGE);
++	setpoint = kmem_alloc(MAXPATHLEN, KM_PUSHPAGE);
++
++	error = dsl_prop_get_ds(zsb->z_os->os_dsl_dataset,
++			zfs_prop_to_name(ZFS_PROP_MOUNTPOINT),
++			1, sizeof (path), path, setpoint);
++	if (!setpoint)
++		dsl_dataset_name(zsb->z_os->os_dsl_dataset, path);
++	else {
++		dname = kmem_alloc(MAXPATHLEN, KM_PUSHPAGE);
++		dsl_dataset_name(zsb->z_os->os_dsl_dataset, dname);
++		strcat(path, dname+strlen(setpoint));
++		kfree(dname);
++		kfree(setpoint);
++	}
++
++	error = spa_prop_get(zsb->z_os->os_spa, &nvp);
++	if (error) {
++		kfree(path);
++		return (ERR_PTR(-error));
++	}
++	error = nvlist_lookup_nvlist(nvp,
++			zpool_prop_to_name(ZPOOL_PROP_ALTROOT), &nv);
++	if (error)
++		altroot = "/";
++	else
++		altroot = fnvlist_lookup_string(nv, ZPROP_VALUE);
++
++	altroot_len = strlen(altroot);
++	relpath = path;
++	if (altroot[altroot_len-1] == '/' && path[0] == '/')
++		relpath++;
++	sprintf(zsb->z_mnt_path, "%s%s", altroot, relpath);
++	nvlist_free(nvp);
++	kfree(path);
++
++	return (zsb->z_mnt_path);
++}
++
+ static int
+-zfsctl_test_super(struct super_block *sb, void *objsetidp)
++zfsctl_get_snapshot_name(zfs_sb_t *zsb, uint64_t objsetid, char *name)
+ {
+-	zfs_sb_t *zsb = sb->s_fs_info;
+-	uint64_t objsetid = *(uint64_t *)objsetidp;
++	int error, ret = ENOENT;
++	uint64_t id;
++	uint64_t cookie = 0;
++	boolean_t case_conflict;
++
++	do {
++		error = -dmu_snapshot_list_next(zsb->z_os, MAXNAMELEN,
++				name, &id, &cookie, &case_conflict);
+ 
+-	return (dmu_objset_id(zsb->z_os) == objsetid);
++		if (error == 0 && id == objsetid) {
++			ret = 0;
++			break;
++		}
++	} while (error == 0);
++
++	return (ret);
+ }
+ 
+-/*
+- * Prevent a new super block from being allocated if an existing one
+- * could not be located.  We only want to preform a lookup operation.
+- */
+ static int
+-zfsctl_set_super(struct super_block *sb, void *objsetidp)
++zfsctl_lookup_snapshot_path(zfs_sb_t *zsb, uint64_t objsetid)
+ {
+-	return (-EEXIST);
++#ifdef HAVE_KERN_PATH
++	struct path path;
++#else
++	struct nameidata nd;
++#endif
++	char *mnt_path;
++	char *path_buff = NULL;
++	char *snapname = NULL;
++	int error, ret;
++
++	mnt_path = zfsctl_get_mnt_path(zsb);
++	if (IS_ERR(mnt_path))
++		return (PTR_ERR(mnt_path));
++	else if (mnt_path == NULL)
++		return (EINVAL);
++
++	path_buff = kmem_zalloc(PATH_MAX, KM_SLEEP);
++	snapname = kmem_zalloc(MAXNAMELEN, KM_SLEEP);
++	if (!path_buff || !snapname) {
++		error = ENOMEM;
++		goto out_path_buff;
++	}
++
++	error = zfsctl_get_snapshot_name(zsb, objsetid, snapname);
++	if (error)
++		goto out_path_buff;
++
++	ret = snprintf(path_buff, PATH_MAX, "%s/%s/%s/%s",
++		mnt_path, ZFS_CTLDIR_NAME, ZFS_SNAPDIR_NAME, snapname);
++	if (ret > (PATH_MAX - 1)) {
++		error = EINVAL;
++		goto out_path_buff;
++	}
++
++#ifdef HAVE_KERN_PATH
++	error = kern_path(path_buff, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &path);
++
++	if (!error)
++		path_put(&path);
++#else
++	error = path_lookup(path_buff, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &nd);
++
++	if (!error)
++		path_put(&nd.path);
++#endif
++
++out_path_buff:
++	kmem_free(path_buff, PATH_MAX);
++	kmem_free(snapname, MAXNAMELEN);
++
++	return (error);
+ }
+ 
+-int
+-zfsctl_lookup_objset(struct super_block *sb, uint64_t objsetid, zfs_sb_t **zsbp)
++static zfs_sb_t *
++zfsctl_get_zsb(zfs_sb_t *zsb, uint64_t objsetid)
+ {
+-	zfs_sb_t *zsb = sb->s_fs_info;
+-	struct super_block *sbp;
+-	zfs_snapentry_t *sep;
+-	uint64_t id;
+ 	int error;
+-
+-	ASSERT(zsb->z_ctldir != NULL);
++	zfs_snapentry_t *sep = NULL;
++	zfs_sb_t *snap_zsb = NULL;
+ 
+ 	mutex_enter(&zsb->z_ctldir_lock);
+ 
+-	/*
+-	 * Verify that the snapshot is mounted.
+-	 */
+ 	sep = avl_first(&zsb->z_ctldir_snaps);
+ 	while (sep != NULL) {
+-		error = dmu_snapshot_lookup(zsb->z_os, sep->se_name, &id);
+-		if (error)
+-			goto out;
++		uint64_t id;
++		char *sname_simple = strchr(sep->se_name, '@');
++
++		if (!sname_simple) {
++			snap_zsb = ERR_PTR(EINVAL);
++			break;
++		}
+ 
+-		if (id == objsetid)
++		sname_simple++;
++		error = dmu_snapshot_lookup(zsb->z_os, sname_simple, &id);
++		if (error) {
++			snap_zsb = ERR_PTR(error);
+ 			break;
++		}
++
++		if (id == objsetid) {
++			snap_zsb = sep->se_root_dentry->d_sb->s_fs_info;
++			break;
++		}
+ 
+ 		sep = AVL_NEXT(&zsb->z_ctldir_snaps, sep);
+ 	}
+ 
+-	if (sep != NULL) {
+-		/*
+-		 * Lookup the mounted root rather than the covered mount
+-		 * point.  This may fail if the snapshot has just been
+-		 * unmounted by an unrelated user space process.  This
+-		 * race cannot occur to an expired mount point because
+-		 * we hold the zsb->z_ctldir_lock to prevent the race.
+-		 */
+-		sbp = zpl_sget(&zpl_fs_type, zfsctl_test_super,
+-		    zfsctl_set_super, 0, &id);
+-		if (IS_ERR(sbp)) {
+-			error = -PTR_ERR(sbp);
+-		} else {
+-			*zsbp = sbp->s_fs_info;
+-			deactivate_super(sbp);
+-		}
+-	} else {
+-		error = SET_ERROR(EINVAL);
++	mutex_exit(&zsb->z_ctldir_lock);
++
++	return (snap_zsb);
++}
++
++int
++zfsctl_lookup_objset(struct super_block *sb, uint64_t objsetid, zfs_sb_t **zsbp)
++{
++	zfs_sb_t *zsb = sb->s_fs_info;
++	int error = 0;
++
++	ASSERT(zsb->z_ctldir != NULL);
++
++	*zsbp = zfsctl_get_zsb(zsb, objsetid);
++	if (*zsbp == NULL) {
++		error = zfsctl_lookup_snapshot_path(zsb, objsetid);
++		if (error)
++			goto out;
++
++		*zsbp = zfsctl_get_zsb(zsb, objsetid);
+ 	}
++
++	if (IS_ERR(*zsbp))
++		error = PTR_ERR(*zsbp);
++	else if (*zsbp == NULL)
++		error = ENOENT;
++	else
++		error = 0;
++
+ out:
+-	mutex_exit(&zsb->z_ctldir_lock);
+ 	ASSERT3S(error, >=, 0);
+ 
+ 	return (error);
+diff --git a/module/zfs/zfs_vfsops.c b/module/zfs/zfs_vfsops.c
+index eea7841..746d101 100644
+--- a/module/zfs/zfs_vfsops.c
++++ b/module/zfs/zfs_vfsops.c
+@@ -1292,6 +1292,8 @@ zfs_domount(struct super_block *sb, void *data, int silent)
+ 
+ 	if (!zsb->z_issnap)
+ 		zfsctl_create(zsb);
++	else
++		dget(sb->s_root);
+ out:
+ 	if (error) {
+ 		dmu_objset_disown(zsb->z_os, zsb);
+@@ -1314,8 +1316,14 @@ zfs_preumount(struct super_block *sb)
+ {
+ 	zfs_sb_t *zsb = sb->s_fs_info;
+ 
+-	if (zsb != NULL && zsb->z_ctldir != NULL)
++	if (!zsb)
++		return;
++
++	if (zsb->z_ctldir != NULL)
+ 		zfsctl_destroy(zsb);
++
++	if (zsb->z_issnap)
++		dput(sb->s_root);
+ }
+ EXPORT_SYMBOL(zfs_preumount);
+ 
+@@ -1420,18 +1428,24 @@ zfs_vget(struct super_block *sb, struct inode **ipp, fid_t *fidp)
+ 	}
+ 
+ 	/* A zero fid_gen means we are in the .zfs control directories */
+-	if (fid_gen == 0 &&
+-	    (object == ZFSCTL_INO_ROOT || object == ZFSCTL_INO_SNAPDIR)) {
+-		*ipp = zsb->z_ctldir;
+-		ASSERT(*ipp != NULL);
+-		if (object == ZFSCTL_INO_SNAPDIR) {
+-			VERIFY(zfsctl_root_lookup(*ipp, "snapshot", ipp,
+-			    0, kcred, NULL, NULL) == 0);
+-		} else {
++	if (fid_gen == 0) {
++		if (object == ZFSCTL_INO_ROOT || object == ZFSCTL_INO_SNAPDIR) {
++			*ipp = zsb->z_ctldir;
++			ASSERT(*ipp != NULL);
++			if (object == ZFSCTL_INO_SNAPDIR) {
++				VERIFY(zfsctl_root_lookup(*ipp, "snapshot", ipp,
++					0, kcred, NULL, NULL) == 0);
++			} else {
++				igrab(*ipp);
++			}
++			ZFS_EXIT(zsb);
++			return (0);
++		} else if (zsb->z_issnap) {
++			*ipp = zsb->z_sb->s_root->d_inode;
+ 			igrab(*ipp);
++			ZFS_EXIT(zsb);
++			return (0);
+ 		}
+-		ZFS_EXIT(zsb);
+-		return (0);
+ 	}
+ 
+ 	gen_mask = -1ULL >> (64 - 8 * i);
+diff --git a/module/zfs/zfs_vnops.c b/module/zfs/zfs_vnops.c
+index 33f9e0e..2c35dca 100644
+--- a/module/zfs/zfs_vnops.c
++++ b/module/zfs/zfs_vnops.c
+@@ -2422,6 +2422,11 @@ zfs_getattr_fast(struct inode *ip, struct kstat *sp)
+ 	}
+ 
+ 	mutex_exit(&zp->z_lock);
++	if (zsb->z_issnap) {
++		if (ip->i_sb->s_root->d_inode == ip)
++			sp->ino = ZFSCTL_INO_SNAPDIRS -
++				dmu_objset_id(zsb->z_os);
++	}
+ 
+ 	ZFS_EXIT(zsb);
+ 
+@@ -4350,19 +4355,35 @@ zfs_fid(struct inode *ip, fid_t *fidp)
+ 	uint64_t	object = zp->z_id;
+ 	zfid_short_t	*zfid;
+ 	int		size, i, error;
++	uint64_t	objsetid = 0;
+ 
+ 	ZFS_ENTER(zsb);
+-	ZFS_VERIFY_ZP(zp);
+ 
+-	if ((error = sa_lookup(zp->z_sa_hdl, SA_ZPL_GEN(zsb),
+-	    &gen64, sizeof (uint64_t))) != 0) {
+-		ZFS_EXIT(zsb);
+-		return (error);
++	if (!zfsctl_is_snapdir(ip)) {
++		ZFS_VERIFY_ZP(zp);
++
++		if ((error = sa_lookup(zp->z_sa_hdl, SA_ZPL_GEN(zsb),
++		    &gen64, sizeof (uint64_t))) != 0) {
++			ZFS_EXIT(zsb);
++			return (error);
++		}
++
++		/* gen must be non-zero to distinguish from .zfs */
++		gen = (gen64) ? (uint32_t)gen64 : 1;
++
++		if (zsb->z_issnap) {
++			size = LONG_FID_LEN;
++			objsetid = dmu_objset_id(zsb->z_os);
++		} else {
++			size = SHORT_FID_LEN;
++		}
++	} else { /* snap dir */
++		gen = 0;
++		size = LONG_FID_LEN;
++		objsetid = ZFSCTL_INO_SNAPDIRS - ip->i_ino;
+ 	}
+ 
+-	gen = (uint32_t)gen64;
+ 
+-	size = (zsb->z_parent != zsb) ? LONG_FID_LEN : SHORT_FID_LEN;
+ 	if (fidp->fid_len < size) {
+ 		fidp->fid_len = size;
+ 		ZFS_EXIT(zsb);
+@@ -4376,14 +4397,10 @@ zfs_fid(struct inode *ip, fid_t *fidp)
+ 	for (i = 0; i < sizeof (zfid->zf_object); i++)
+ 		zfid->zf_object[i] = (uint8_t)(object >> (8 * i));
+ 
+-	/* Must have a non-zero generation number to distinguish from .zfs */
+-	if (gen == 0)
+-		gen = 1;
+ 	for (i = 0; i < sizeof (zfid->zf_gen); i++)
+ 		zfid->zf_gen[i] = (uint8_t)(gen >> (8 * i));
+ 
+ 	if (size == LONG_FID_LEN) {
+-		uint64_t	objsetid = dmu_objset_id(zsb->z_os);
+ 		zfid_long_t	*zlfid;
+ 
+ 		zlfid = (zfid_long_t *)fidp;
+diff --git a/module/zfs/zpl_export.c b/module/zfs/zpl_export.c
+index ac94494..7520076 100644
+--- a/module/zfs/zpl_export.c
++++ b/module/zfs/zpl_export.c
+@@ -49,7 +49,7 @@ zpl_encode_fh(struct dentry *dentry, __u32 *fh, int *max_len, int connectable)
+ 
+ 	fid->fid_len = len_bytes - offsetof(fid_t, fid_data);
+ 
+-	if (zfsctl_is_node(ip))
++	if (zfsctl_is_ctl(ip))
+ 		rc = zfsctl_fid(ip, fid);
+ 	else
+ 		rc = zfs_fid(ip, fid);
+@@ -127,7 +127,10 @@ static int
+ zpl_commit_metadata(struct inode *inode)
+ {
+ 	cred_t *cr = CRED();
+-	int error;
++	int error = 0;
++
++	if (zfsctl_is_node(inode))
++		return (error);
+ 
+ 	crhold(cr);
+ 	error = -zfs_fsync(inode, 0, cr);
+diff --git a/module/zfs/zpl_inode.c b/module/zfs/zpl_inode.c
+index c009807..a6d7318 100644
+--- a/module/zfs/zpl_inode.c
++++ b/module/zfs/zpl_inode.c
+@@ -206,20 +206,8 @@ zpl_rmdir(struct inode * dir, struct dentry *dentry)
+ static int
+ zpl_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
+ {
+-	boolean_t issnap = ITOZSB(dentry->d_inode)->z_issnap;
+ 	int error;
+ 
+-	/*
+-	 * Ensure MNT_SHRINKABLE is set on snapshots to ensure they are
+-	 * unmounted automatically with the parent file system.  This
+-	 * is done on the first getattr because it's not easy to get the
+-	 * vfsmount structure at mount time.  This call path is explicitly
+-	 * marked unlikely to avoid any performance impact.  FWIW, ext4
+-	 * resorts to a similar trick for sysadmin convenience.
+-	 */
+-	if (unlikely(issnap && !(mnt->mnt_flags & MNT_SHRINKABLE)))
+-		mnt->mnt_flags |= MNT_SHRINKABLE;
+-
+ 	error = -zfs_getattr_fast(dentry->d_inode, stat);
+ 	ASSERT3S(error, <=, 0);
+ 
+-- 
+2.1.2
+
