@@ -104,7 +104,7 @@ kver=$kver
 
 if [ \$1 = "purge" -o \$1 = "remove" ]; then
 
-	INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
+	INITRD=No run-parts --new-session --report -a $kver /etc/kernel/postinst.d > /dev/null 2>&1
 
 fi
 EOF
