@@ -1,5 +1,5 @@
 
 make kernelversion
-kver="$(cat include/config/kernel.release)"
+kver="$(cat include/config/kernel.release | tr '-' '~')"
 
 sed -i "s%config_deb_version=.*%config_deb_version=$kver%g" ../config_pkgver
