@@ -82,6 +82,16 @@ index 1f4f219..1d30730 100644
 EOF
 		! patch -p1 --dry-run < $tmpfile >/dev/null || patch -p1 < $tmpfile
 		rm -f $tmpfile
+
+		### tmp fix for 3.19 until new BDI structure is reflected in code
+		case $(cat ../include/config/kernel.release) in
+			3.19*|4.0*)
+				! grep -q '#define HAVE_BDI 1' ./zfs_config.h || \
+					sed -i 's%#define HAVE_BDI 1%#undef HAVE_BDI%' ./zfs_config.h
+				;;
+			*)
+				;;
+		esac
 	fi
 
 	cd module
