@@ -195,7 +195,7 @@ index 43ccd29..02cc155 100644
  
  	mxc_hdmi_clear_overflow(hdmi);
  
-+	if (!hdmi->hdmi_data.video_mode.mDVI)
++	if (hdmi->cable_plugin && !hdmi->hdmi_data.video_mode.mDVI)
 +		hdmi_enable_overflow_interrupts();
 +
  	dev_dbg(&hdmi->pdev->dev, "%s exit\n\n", __func__);
