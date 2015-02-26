@@ -1,5 +1,5 @@
 case $config_platform_branch in
-    imx6*|bpi*|rk*)
+    imx6*|bpi*|rk*|rpi2*)
 	;;
     *)
 	return 0

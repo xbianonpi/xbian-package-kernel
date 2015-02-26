@@ -33,6 +33,11 @@ for rr in .zfs .spl; do
         fi )
     else
         git clone -b master --depth=1 --single-branch "$giturl" $rr
+	if [ $rr = ".zfs" ]; then
+		cd .zfs
+		patch -p1 < ../../../../extra-files/0001-Fixes-for-accessing-snapshots-over-NFS.patch
+		cd ..
+	fi
     fi
 
 done

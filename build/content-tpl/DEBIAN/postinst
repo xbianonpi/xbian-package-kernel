@@ -6,8 +6,10 @@ export KVER
 
 if [ $1 == "configure" ]; then
 
-        mv /boot/kernel.img-$KVER /boot/kernel.img
+        mv /boot-new/kernel.img-$KVER /boot/kernel.img
+        mv /boot-new/System.map-$KVER /boot/
         cp /boot/System.map-$KVER /boot/System.map
+        rm -r /boot-new
         depmod -a $KVER
 
         for f in $fpool; do

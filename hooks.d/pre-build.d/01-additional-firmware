@@ -1,0 +1,12 @@
+case $config_platform_branch in
+    imx6-3.14.y)
+        ;;
+    *)
+	return 0;
+        ;;
+esac
+
+cp ../../../extra-files/imx6-3.14.y/brcmfmac4329-sdio.bin firmware/
+cp ../../../extra-files/imx6-3.14.y/bcm4329-fullmac-4.bin firmware/
+
+
