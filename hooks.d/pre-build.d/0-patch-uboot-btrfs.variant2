@@ -1,0 +1,2095 @@
+cat << \EOF > /tmp/003.patch
+--- a/Makefile
++++ b/Makefile
+@@ -258,7 +258,8 @@
+ 	fs/sandbox/libsandboxfs.o \
+ 	fs/ubifs/libubifs.o \
+ 	fs/yaffs2/libyaffs2.o \
+-	fs/zfs/libzfs.o
++	fs/zfs/libzfs.o \
++	fs/btrfs/libbtrfs.o
+ 	LIBS-y += net/libnet.o
+ 	LIBS-y += disk/libdisk.o
+ 	LIBS-y += drivers/bios_emulator/libatibiosemu.o
+diff --git a/common/Makefile b/common/Makefile
+index 74404be..6025a12 100644
+--- a/common/Makefile
++++ b/common/Makefile
+@@ -57,6 +57,7 @@ obj-$(CONFIG_CMD_BMP) += cmd_bmp.o
+ COBJS-$(CONFIG_CMD_BOOTMENU) += cmd_bootmenu.o
+ COBJS-$(CONFIG_CMD_BOOTLDR) += cmd_bootldr.o
+ COBJS-$(CONFIG_CMD_BOOTSTAGE) += cmd_bootstage.o
++COBJS-$(CONFIG_CMD_BTR) += cmd_btr.o
+ COBJS-$(CONFIG_CMD_CACHE) += cmd_cache.o
+ COBJS-$(CONFIG_CMD_CBFS) += cmd_cbfs.o
+ COBJS-$(CONFIG_CMD_CONSOLE) += cmd_console.o
+diff --git a/common/cmd_btr.c b/common/cmd_btr.c
+new file mode 100644
+index 0000000..02a4bf1
+--- /dev/null
++++ b/common/cmd_btr.c
+@@ -0,0 +1,65 @@
++/*
++ * (C) Copyright 2013 Codethink Limited
++ * Btrfs port to Uboot by
++ * Adnan Ali <adnan.ali@codethink.co.uk>
++ * See file CREDITS for list of people who contributed to this
++ * project.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++/*
++ * Boot support
++ */
++#include <fs.h>
++#include <btrfs.h>
++
++char subvolname[BTRFS_MAX_SUBVOL_NAME];
++
++int do_btr_fsload(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	if (argc > 5)
++		strcpy(subvolname, argv[5]);
++	else
++		subvolname[0] = '\0';
++
++	return do_load(cmdtp, flag, argc, argv, FS_TYPE_BTR, 16);
++}
++
++
++U_BOOT_CMD(
++btrload,        7,      0,      do_btr_fsload,
++	"load binary file from a btr filesystem",
++	"<interface> [<dev[:part]>]  <addr> <filename> [subvol_name]\n"
++	"    - Load binary file 'filename' from 'dev' on 'interface'\n"
++	"      to address 'addr' from better filesystem.\n"
++	"      the load stops on end of file.\n"
++	"      subvol_name is used read that file from this subvolume.\n"
++	"      All numeric parameters are assumed to be hex."
++);
++
++static int do_btr_ls(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	return do_ls(cmdtp, flag, argc, argv, FS_TYPE_BTR);
++}
++
++U_BOOT_CMD(
++	btrls,  4,      1,      do_btr_ls,
++	"list files in a directory (default /)",
++	"<interface> [<dev[:part]>] [directory]\n"
++	"    - list files from 'dev' on 'interface' in a 'directory'"
++);
++
+diff --git a/fs/btrfs/Makefile b/fs/btrfs/Makefile
+new file mode 100644
+index 0000000..80cdfd6
+--- /dev/null
++++ b/fs/btrfs/Makefile
+@@ -0,0 +1,31 @@
++#
++# (C) Copyright 2012
++# Jorgen Lundman <lundman at lundman.net>
++#
++# SPDX-License-Identifier:     GPL-2.0+
++#
++
++include $(TOPDIR)/config.mk
++
++LIB	= $(obj)libbtrfs.o
++
++AOBJS	=
++COBJS-$(CONFIG_CMD_BTR) := btrfs.o
++
++SRCS	:= $(AOBJS:.o=.S) $(COBJS-y:.o=.c)
++OBJS	:= $(addprefix $(obj),$(AOBJS) $(COBJS-y))
++
++
++all:	$(LIB) $(AOBJS)
++
++$(LIB):	$(obj).depend $(OBJS)
++	$(call cmd_link_o_target, $(OBJS))
++
++#########################################################################
++
++# defines $(obj).depend target
++include $(SRCTREE)/rules.mk
++
++sinclude $(obj).depend
++
++#########################################################################
+diff --git a/fs/btrfs/btrfs.c b/fs/btrfs/btrfs.c
+new file mode 100644
+index 0000000..f4dec57
+--- /dev/null
++++ b/fs/btrfs/btrfs.c
+@@ -0,0 +1,1336 @@
++/*
++ * (C) Copyright 2013 Codethink Limited
++ * Btrfs port to Uboot by
++ * Adnan Ali <adnan.ali@codethink.co.uk>
++
++ * btrfs.c -- readonly btrfs support for syslinux
++ * Some data structures are derivated from btrfs-tools-0.19 ctree.h
++ * Copyright 2009 Intel Corporation; author: alek.du@intel.com
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, Inc., 53 Temple Place Ste 330,
++ * Boston MA 02111-1307, USA; either version 2 of the License, or
++ * (at your option) any later version; incorporated herein by reference.
++ *
++ */
++
++#include <malloc.h>
++#include <common.h>
++#include <btrfs.h>
++#include <command.h>
++#include <config.h>
++#include <crc.h>
++#include <fs.h>
++#include <linux/compiler.h>
++#include <linux/ctype.h>
++#include <linux/stat.h>
++#include <asm/byteorder.h>
++
++unsigned long btr_part_offset;
++/* Actual file structures (we don't have malloc yet...) */
++struct file files[BTRFS_MAX_OPEN];
++static block_dev_desc_t *btrfs_block_dev_desc;
++static disk_partition_t *part_info;
++struct inode parent_inode;
++
++/* Bit-reflected CRC32C polynomial 0x82F63B78 */
++
++static inline u32 crc32c_le(u32 crc, const char *data, size_t length)
++{
++	return crc32c_cal(crc, data, length);
++}
++
++void btrfs_type(char num)
++{
++	switch (num) {
++	case BTRFS_FILE:
++		puts("<FILE>   "); break;
++	case BTRFS_DIR:
++		puts("<DIR>    "); break;
++	case BTRFS_SYMLNK:
++		puts("<SYM>    "); break;
++	default:
++		puts("<UNKNOWN>"); break;
++	}
++}
++
++static inline __le32 next_psector(__le32 psector, uint32_t skip)
++{
++	if (EXTENT_SPECIAL(psector))
++		return psector;
++	else
++		return psector + skip;
++}
++
++static inline __le32 next_pstart(const struct extent *e)
++{
++	return next_psector(e->pstart, e->len);
++}
++
++static inline struct inode *get_inode(struct inode *inode)
++{
++	inode->refcnt++;
++
++	return inode;
++}
++
++/* compare function used for bin_search */
++typedef int (*cmp_func)(void *ptr1, void *ptr2);
++
++static int bin_search(void *ptr, int item_size, void *cmp_item, cmp_func func,
++			      int min, int max, int *slot)
++{
++	int low = min;
++	int high = max;
++	int mid;
++	int ret;
++	unsigned long offset;
++	void *item;
++
++	while (low < high) {
++		mid = (low + high) / 2;
++		offset = mid * item_size;
++
++		item = ptr + offset;
++		ret = func(item, cmp_item);
++
++		if (ret < 0)
++			low = mid + 1;
++		else if (ret > 0)
++			high = mid;
++		else {
++			*slot = mid;
++			return 0;
++		}
++	}
++	*slot = low;
++
++	return 1;
++}
++
++/* XXX: these should go into the filesystem instance structure */
++static struct btrfs_chunk_map chunk_map;
++static struct btrfs_super_block sb;
++static u64 fs_tree;
++/* compare btrfs chunk map in list*/
++static int btrfs_comp_chunk_map(struct btrfs_chunk_map_item *m1,
++				struct btrfs_chunk_map_item *m2)
++{
++	if (__le64_to_cpu(m1->logical) > __le64_to_cpu(m2->logical))
++		return 1;
++
++	if (__le64_to_cpu(m1->logical) < __le64_to_cpu(m2->logical))
++		return -1;
++
++	return 0;
++}
++
++/* insert a new chunk mapping item */
++static void insert_map(struct btrfs_chunk_map_item *item)
++{
++	int ret;
++	int slot;
++	int i;
++
++	if (chunk_map.map == NULL) { /* first item */
++		chunk_map.map_length = BTRFS_MAX_CHUNK_ENTRIES;
++		chunk_map.map = (struct btrfs_chunk_map_item *)
++			malloc(chunk_map.map_length * sizeof(*chunk_map.map));
++		chunk_map.map[0] = *item;
++		chunk_map.cur_length = 1;
++
++		return;
++	}
++	ret = bin_search(chunk_map.map, sizeof(*item), item,
++				(cmp_func)btrfs_comp_chunk_map, 0,
++				chunk_map.cur_length, &slot);
++	if (ret == 0)/* already in map */
++		return;
++
++	if (chunk_map.cur_length == BTRFS_MAX_CHUNK_ENTRIES) {
++		/* should be impossible */
++		puts("too many chunk items\n");
++		return;
++	}
++	for (i = chunk_map.cur_length; i > slot; i--)
++		chunk_map.map[i] = chunk_map.map[i-1];
++	chunk_map.map[slot] = *item;
++	chunk_map.cur_length++;
++}
++
++/*
++ * from sys_chunk_array or chunk_tree, we can convert a logical address to
++ * a physical address we can not support multi device case yet
++ */
++static u64 logical_physical(u64 logical)
++{
++	struct btrfs_chunk_map_item item;
++	int slot, ret;
++
++	item.logical = logical;
++	ret = bin_search(chunk_map.map, sizeof(*chunk_map.map), &item,
++			(cmp_func)btrfs_comp_chunk_map, 0,
++			chunk_map.cur_length, &slot);
++	if (ret == 0)
++		slot++;
++	else if (slot == 0)
++		return -1;
++
++	if (logical >=
++		chunk_map.map[slot-1].logical + chunk_map.map[slot-1].length)
++		return -1;
++
++	return chunk_map.map[slot-1].physical + logical -
++			chunk_map.map[slot-1].logical;
++}
++
++int btrfs_devread(int sector, int byte_offset, int byte_len, char *buf)
++{
++	ALLOC_CACHE_ALIGN_BUFFER(char, sec_buf, BTRFS_SS);
++	unsigned block_len;
++
++	/* Get the read to the beginning of a partition */
++	sector += byte_offset >> BTRFS_SECTOR_BITS;
++	byte_offset &= BTRFS_SS - 1;
++
++	if (btrfs_block_dev_desc == NULL) {
++		puts("** Invalid Block Device Descriptor (NULL)\n");
++		return 0;
++	}
++	if (byte_offset != 0) {
++		/* read first part which isn't aligned with start of sector */
++		if (btrfs_block_dev_desc->
++				block_read(btrfs_block_dev_desc->dev,
++					part_info->start + sector, 1,
++					(unsigned long *) sec_buf) != 1) {
++			puts(" ** btrfs_devread() read error **\n");
++			return 0;
++		}
++		memcpy(buf, sec_buf + byte_offset,
++			min(BTRFS_SS - byte_offset, byte_len));
++		buf += min(BTRFS_SS - byte_offset, byte_len);
++		byte_len -= min(BTRFS_SS - byte_offset, byte_len);
++		sector++;
++	}
++	/* read sector aligned part */
++
++	block_len = byte_len & ~(BTRFS_SS - 1);
++
++	if (block_len == 0) {
++		ALLOC_CACHE_ALIGN_BUFFER(u8, p, BTRFS_SS);
++
++		block_len = BTRFS_SS;
++		btrfs_block_dev_desc->block_read(btrfs_block_dev_desc->dev,
++						part_info->start + sector,
++						1, (unsigned long *)p);
++		memcpy(buf, p, byte_len);
++		return 1;
++	}
++	ALLOC_CACHE_ALIGN_BUFFER(u8, t, block_len);
++	if (btrfs_block_dev_desc->block_read(btrfs_block_dev_desc->dev,
++						part_info->start + sector,
++						block_len / BTRFS_SS,
++						(unsigned long *) t) !=
++						block_len / BTRFS_SS) {
++		debug(" ** %s read error - block\n", __func__);
++		return 0;
++	}
++
++	memcpy(buf, t, block_len);
++	block_len = byte_len & ~(BTRFS_SS - 1);
++	buf += block_len;
++	byte_len -= block_len;
++	sector += block_len / BTRFS_SS;
++	if (byte_len != 0) {
++		/* read rest of data which are not in whole sector */
++		if (btrfs_block_dev_desc->
++			block_read(btrfs_block_dev_desc->dev,
++				part_info->start + sector, 1,
++				(unsigned long *) sec_buf) != 1) {
++			debug("* %s read error - last part\n", __func__);
++			return 0;
++		}
++		memcpy(buf, sec_buf, byte_len);
++	}
++
++	return 1;
++}
++/* btrfs has several super block mirrors, need to calculate their location */
++static inline u64 btrfs_sb_offset(int mirror)
++{
++	u64 start = 16 * 1024;
++
++	if (mirror)
++		return start << (BTRFS_SUPER_MIRROR_SHIFT * mirror);
++
++	return BTRFS_SUPER_INFO_OFFSET;
++}
++
++/* find the most recent super block */
++static int btrfs_read_super_block(struct btrfs_info *fs)
++{
++	int i;
++	u8 fsid[BTRFS_FSID_SIZE];
++	u64 offset;
++	u64 transid = 0;
++	struct btrfs_super_block buf;
++
++	sb.total_bytes = ~0;	/* Unknown as of yet */
++
++	/*
++	 * Only first header is checked for filesystem verification
++	 * mirror of this header can be used if required
++	 */
++	/* find most recent super block */
++	for (i = 0; i < BTRFS_SUPER_MIRROR_MAX; i++) {
++
++		offset = btrfs_sb_offset(i);
++		if (offset >= sb.total_bytes)
++			break;
++
++		if (btrfs_devread((offset/BTRFS_SS), 0,
++				sizeof(struct btrfs_super_block),
++				(char *)&buf) != 1)
++			return -1;
++
++		if (buf.bytenr != offset ||
++				strncmp((char *)(&buf.magic),
++				BTRFS_MAGIC, sizeof(buf.magic)))
++			return -1;
++
++		if (i == 0)
++			memcpy(fsid, buf.fsid, sizeof(fsid));
++		else if (memcmp(fsid, buf.fsid, sizeof(fsid))) {
++			puts("fsid doesn't match\n");
++			return -1;
++		}
++
++		if (buf.generation > transid) {
++			memcpy(&sb, &buf, sizeof(sb));
++			transid = buf.generation;
++		}
++	}
++
++	return 0;
++}
++
++static inline unsigned long btrfs_chunk_item_size(int num_stripes)
++{
++	return sizeof(struct btrfs_chunk) +
++		sizeof(struct btrfs_stripe) * (num_stripes - 1);
++}
++
++static void clear_path(struct btrfs_path *path)
++{
++	memset(path, 0, sizeof(*path));
++}
++
++static int btrfs_comp_keys(struct btrfs_disk_key *k1, struct btrfs_disk_key *k2)
++{
++	if (k1->objectid > k2->objectid)
++		return 1;
++	if (k1->objectid < k2->objectid)
++		return -1;
++	if (k1->type > k2->type)
++		return 1;
++	if (k1->type < k2->type)
++		return -1;
++	if (k1->offset > k2->offset)
++		return 1;
++	if (k1->offset < k2->offset)
++		return -1;
++
++	return 0;
++}
++
++/* compare keys but ignore offset, is useful to enumerate all same kind keys */
++static int btrfs_comp_keys_type(struct btrfs_disk_key *k1,
++					struct btrfs_disk_key *k2)
++{
++	if (k1->objectid > k2->objectid)
++		return 1;
++	if (k1->objectid < k2->objectid)
++		return -1;
++	if (k1->type > k2->type)
++		return 1;
++	if (k1->type < k2->type)
++		return -1;
++
++	return 0;
++}
++
++/* seach tree directly on disk ... */
++static int search_tree(struct btrfs_info *fs, u64 loffset,
++		struct btrfs_disk_key *key, struct btrfs_path *path)
++{
++	u8 buf[BTRFS_MAX_LEAF_SIZE];
++	struct btrfs_header *header = (struct btrfs_header *)buf;
++	struct btrfs_node *node = (struct btrfs_node *)buf;
++	struct btrfs_leaf *leaf = (struct btrfs_leaf *)buf;
++	int slot, ret;
++	u64 offset;
++
++	offset = logical_physical(loffset);
++	btrfs_devread(offset/BTRFS_SS, (offset%BTRFS_SS),
++					sizeof(*header), (char *)header);
++	if (header->level) { /*node*/
++		btrfs_devread(((offset+sizeof(*header))/BTRFS_SS),
++				((offset+sizeof(*header))%BTRFS_SS),
++				__le32_to_cpu(sb.nodesize) - sizeof(*header),
++				(char *)&node->ptrs[0]);
++		path->itemsnr[header->level] = header->nritems;
++		path->offsets[header->level] = loffset;
++		ret = bin_search(&node->ptrs[0], sizeof(struct btrfs_key_ptr),
++			key, (cmp_func)btrfs_comp_keys,
++			path->slots[header->level], header->nritems, &slot);
++		if (ret && slot > path->slots[header->level])
++			slot--;
++		path->slots[header->level] = slot;
++		ret = search_tree(fs, node->ptrs[slot].blockptr, key, path);
++	} else { /*leaf*/
++		btrfs_devread(((offset+sizeof(*header))/BTRFS_SS),
++				((offset+sizeof(*header))%BTRFS_SS),
++				(sb.leafsize) - sizeof(*header),
++				(char *)&leaf->items);
++		path->itemsnr[header->level] = header->nritems;
++		path->offsets[0] = loffset;
++		ret = bin_search(&leaf->items[0], sizeof(struct btrfs_item),
++			key, (cmp_func)btrfs_comp_keys, path->slots[0],
++			header->nritems, &slot);
++		if (ret && slot > path->slots[header->level])
++			slot--;
++		path->slots[0] = slot;
++		path->item = leaf->items[slot];
++		btrfs_devread(
++		((offset + sizeof(*header) + leaf->items[slot].offset)
++								/BTRFS_SS),
++		((offset + sizeof(*header) + leaf->items[slot].offset)
++								%BTRFS_SS),
++		leaf->items[slot].size, (char *)&path->data);
++	}
++
++	return ret;
++}
++
++/* return 0 if leaf found */
++static int next_leaf(struct btrfs_info *fs, struct btrfs_disk_key *key,
++						struct btrfs_path *path)
++{
++	int slot;
++	int level = 1;
++
++	while (level < BTRFS_MAX_LEVEL) {
++		if (!path->itemsnr[level]) /* no more nodes */
++			return 1;
++
++		slot = path->slots[level] + 1;
++		if (slot >= path->itemsnr[level]) {
++			level++;
++			continue;
++		}
++		path->slots[level] = slot;
++		path->slots[level-1] = 0; /* reset low level slots info */
++		search_tree(fs, path->offsets[level], key, path);
++		break;
++	}
++	if (level == BTRFS_MAX_LEVEL)
++		return 1;
++
++	return 0;
++}
++
++/* return 0 if slot found */
++static int next_slot(struct btrfs_info *fs, struct btrfs_disk_key *key,
++						struct btrfs_path *path)
++{
++	int slot;
++
++	if (!path->itemsnr[0])
++		return 1;
++
++	slot = path->slots[0] + 1;
++	if (slot >= path->itemsnr[0])
++		return 1;
++
++	path->slots[0] = slot;
++	search_tree(fs, path->offsets[0], key, path);
++
++	return 0;
++}
++
++/*
++ * read chunk_array in super block
++ */
++static void btrfs_read_sys_chunk_array(void)
++{
++	struct btrfs_chunk_map_item item;
++	struct btrfs_disk_key *key;
++	struct btrfs_chunk *chunk;
++	int cur;
++
++	/* read chunk array in superblock */
++	cur = 0;
++
++	while (cur < __le32_to_cpu(sb.sys_chunk_array_size)) {
++		key = (struct btrfs_disk_key *)(sb.sys_chunk_array + cur);
++		cur += sizeof(*key);
++		chunk = (struct btrfs_chunk *)(sb.sys_chunk_array + cur);
++		cur += btrfs_chunk_item_size(chunk->num_stripes);
++		/* insert to mapping table, ignore multi stripes */
++		item.logical = key->offset;
++		item.length = chunk->length;
++		item.devid = chunk->stripe.devid;
++		item.physical = chunk->stripe.offset;/*ignore other stripes */
++		insert_map(&item);
++	}
++}
++
++/* read chunk items from chunk_tree and insert them to chunk map */
++static void btrfs_read_chunk_tree(struct btrfs_info *fs)
++{
++	struct btrfs_disk_key search_key;
++	struct btrfs_chunk *chunk;
++	struct btrfs_chunk_map_item item;
++	struct btrfs_path path;
++
++	if (!(__le64_to_cpu(sb.flags) & BTRFS_SUPER_FLAG_METADUMP)) {
++		if (__le64_to_cpu(sb.num_devices) > 1) {
++			debug("warning: only support one btrfs device %lld\n",
++				__le64_to_cpu(sb.num_devices));
++			return;
++		}
++		/* read chunk from chunk_tree */
++		search_key.objectid = BTRFS_FIRST_CHUNK_TREE_OBJECTID;
++		search_key.type = BTRFS_CHUNK_ITEM_KEY;
++		search_key.offset = 0;
++		clear_path(&path);
++		search_tree(fs, (sb.chunk_root), &search_key, &path);
++		do {
++			do {
++				if (btrfs_comp_keys_type(&search_key,
++							&path.item.key))
++					break;
++				chunk = (struct btrfs_chunk *)(path.data);
++				/* insert to mapping table, ignore stripes */
++				item.logical = path.item.key.offset;
++				item.length = chunk->length;
++				item.devid = chunk->stripe.devid;
++				item.physical = chunk->stripe.offset;
++				insert_map(&item);
++			} while (!next_slot(fs, &search_key, &path));
++			if (btrfs_comp_keys_type(&search_key, &path.item.key))
++				break;
++		} while (!next_leaf(fs, &search_key, &path));
++	}
++}
++
++static inline u64 btrfs_name_hash(const char *name, int len)
++{
++	return btrfs_crc32c((u32)~1, name, len);
++}
++
++static struct inode *btrfs_iget_by_inr(struct btrfs_info *fs, u64 inr)
++{
++	struct inode *inode;
++	struct btrfs_inode_item *inode_item;
++	struct btrfs_disk_key search_key;
++	struct btrfs_path path;
++	struct btrfs_pvt_inode *pvt;
++	int ret;
++
++	/*
++	*FIXME: some BTRFS inode member are u64, while our logical inode
++	*is u32, we may need change them to u64 later
++	*/
++	search_key.objectid = inr;
++	search_key.type = BTRFS_INODE_ITEM_KEY;
++	search_key.offset = 0;
++	clear_path(&path);
++	ret = search_tree(fs, fs_tree, &search_key, &path);
++	if (ret) {
++		debug("%s search_tree failed\n", __func__);
++		return NULL;
++	}
++
++	inode_item = (struct btrfs_inode_item *)path.data;
++	inode = alloc_inode(fs, inr, sizeof(struct btrfs_pvt_inode));
++	if (!(inode)) {
++		debug("%s alloc_inode failed\n", __func__);
++		return NULL;
++	}
++	inode->ino = inr;
++	inode->size = inode_item->size;
++	inode->mode = BTRFS_IFTODT(inode_item->mode);
++	if (inode->mode == BTRFS_DT_REG || inode->mode == BTRFS_DT_LNK) {
++		struct btrfs_file_extent_item *extent_item;
++		u64 offset;
++
++		/* get file_extent_item */
++		search_key.type = BTRFS_EXTENT_DATA_KEY;
++		search_key.offset = 0;
++		clear_path(&path);
++		ret = search_tree(fs, fs_tree, &search_key, &path);
++		if (ret)
++			return NULL; /* impossible */
++		extent_item = (struct btrfs_file_extent_item *)path.data;
++		if (extent_item->type == BTRFS_FILE_EXTENT_INLINE)
++			offset = path.offsets[0] + sizeof(struct btrfs_header)
++				+ path.item.offset
++				+ offsetof(struct btrfs_file_extent_item,
++								disk_bytenr);
++		else
++			offset = extent_item->disk_bytenr;
++		pvt = (struct btrfs_pvt_inode *)inode->pvt;
++		pvt->offset = offset;
++	}
++
++	return inode;
++}
++
++static struct inode *btrfs_iget_root(struct btrfs_info *fs)
++{
++	/* BTRFS_FIRST_CHUNK_TREE_OBJECTID(256) actually
++	 * is first OBJECTID for FS_TREE
++	 */
++	return btrfs_iget_by_inr(fs, BTRFS_FIRST_CHUNK_TREE_OBJECTID);
++}
++
++static struct inode *btrfs_iget(const char *name, struct inode *parent)
++{
++	struct btrfs_info *fs = parent->fs;
++	struct btrfs_disk_key search_key;
++	struct btrfs_path path;
++	struct btrfs_dir_item dir_item;
++	int ret;
++
++	search_key.objectid = parent->ino;
++	search_key.type = BTRFS_DIR_ITEM_KEY;
++	search_key.offset = btrfs_name_hash(name, strlen(name));
++	clear_path(&path);
++	ret = search_tree(fs, fs_tree, &search_key, &path);
++	if (ret)
++		return NULL;
++
++	dir_item = *(struct btrfs_dir_item *)path.data;
++
++	return btrfs_iget_by_inr(fs, dir_item.location.objectid);
++}
++
++static int btrfs_readlink(struct inode *inode, char *buf)
++{
++	struct btrfs_pvt_inode *pvt = (struct btrfs_pvt_inode *)inode->pvt;
++	btrfs_devread((logical_physical(pvt->offset)/BTRFS_SS),
++		(logical_physical(pvt->offset)%BTRFS_SS),
++					inode->size, (char *)buf);
++	buf[inode->size] = '\0';
++	return inode->size;
++}
++
++static int btrfs_readdir(struct file *file, struct btrfs_dirent *btrfs_dirent)
++{
++	struct btrfs_info *fs = file->fs;
++	struct inode *inode = file->inode;
++	struct btrfs_disk_key search_key;
++	struct btrfs_path path;
++	struct btrfs_dir_item *dir_item;
++	int ret;
++
++	/*
++	 * we use file->offset to store last search key.offset, will will search
++	 * key that lower that offset, 0 means first search and we will search
++	 * -1UL, which is the biggest possible key
++	 */
++	search_key.objectid = inode->ino;
++	search_key.type = BTRFS_DIR_ITEM_KEY;
++	search_key.offset = file->offset - 1;
++	clear_path(&path);
++	ret = search_tree(fs, fs_tree, &search_key, &path);
++
++	if (ret) {
++		if (btrfs_comp_keys_type(&search_key, &path.item.key))
++			return -1;
++	}
++
++	dir_item = (struct btrfs_dir_item *)path.data;
++	file->offset = path.item.key.offset;
++	btrfs_dirent->d_ino = dir_item->location.objectid;
++	btrfs_dirent->d_off = file->offset;
++	btrfs_dirent->d_reclen = offsetof(struct btrfs_dirent, d_name)
++		+ dir_item->name_len + 1;
++	btrfs_dirent->d_type = BTRFS_IFTODT(dir_item->type);
++	memcpy(btrfs_dirent->d_name, dir_item + 1, dir_item->name_len);
++	btrfs_dirent->d_name[dir_item->name_len] = '\0';
++	btrfs_type(dir_item->type);
++	printf("   %s\n", btrfs_dirent->d_name);
++
++	return 0;
++}
++
++static int btrfs_next_extent(struct inode *inode, uint32_t lstart)
++{
++	struct btrfs_disk_key search_key;
++	struct btrfs_file_extent_item *extent_item;
++	struct btrfs_path path;
++	int ret;
++	u64 offset;
++	struct btrfs_info *fs = inode->fs;
++	struct btrfs_pvt_inode *pvt;
++	u32 sec_shift = BTRFS_SECTOR_BITS;
++	u32 sec_size = BTRFS_SS;
++
++	search_key.objectid = inode->ino;
++	search_key.type = BTRFS_EXTENT_DATA_KEY;
++	search_key.offset = lstart << sec_shift;
++	clear_path(&path);
++	ret = search_tree(fs, fs_tree, &search_key, &path);
++	if (ret) { /* impossible */
++		puts("btrfs: search extent data error\n");
++		return -1;
++	}
++	extent_item = (struct btrfs_file_extent_item *)path.data;
++
++	if (extent_item->encryption) {
++		puts("btrfs: found encrypted data, cannot continue\n");
++		return -1;
++	}
++	if (extent_item->compression) {
++		puts("btrfs: found compressed data, cannot continue\n");
++		return -1;
++	}
++
++	if (extent_item->type == BTRFS_FILE_EXTENT_INLINE) {/* inline file */
++		/* we fake a extent here, and PVT of inode will tell us */
++		offset = path.offsets[0] + sizeof(struct btrfs_header)
++			+ path.item.offset
++			+ offsetof(struct btrfs_file_extent_item, disk_bytenr);
++		inode->next_extent.len =
++			(inode->size + sec_size - 1) >> sec_shift;
++	} else {
++		offset = extent_item->disk_bytenr + extent_item->offset;
++		inode->next_extent.len =
++			(extent_item->num_bytes + sec_size - 1) >> sec_shift;
++	}
++	inode->next_extent.pstart =
++		logical_physical(offset) >> sec_shift;
++	pvt = (struct btrfs_pvt_inode *)inode->pvt;
++	pvt->offset = offset;
++	return 0;
++}
++
++static uint32_t btrfs_getfssec(struct file *file, char *buf, int sectors,
++					char *have_more)
++{
++	u32 ret;
++	struct btrfs_pvt_inode *pvt =
++			(struct btrfs_pvt_inode *)file->inode->pvt;
++	u32 off = pvt->offset % BTRFS_SS;
++	char handle_inline = 0;
++
++	if (off && !file->offset) {/* inline file first read patch */
++		file->inode->size += off;
++		handle_inline = 1;
++	}
++	ret = generic_getfssec(file, buf, sectors, have_more);
++	if (!ret)
++		return ret;
++
++	off = pvt->offset % BTRFS_SS;
++	if (handle_inline) {/* inline file patch */
++		ret -= off;
++		memcpy(buf, buf + off, ret);
++	}
++
++	return ret;
++}
++
++static void btrfs_get_fs_tree(struct btrfs_info *fs)
++{
++	struct btrfs_disk_key search_key;
++	struct btrfs_path path;
++	struct btrfs_root_item *tree;
++	char subvol_ok = 0;
++
++	/* check if subvol is filled by installer */
++	if (*subvolname) {
++		search_key.objectid = BTRFS_FS_TREE_OBJECTID;
++		search_key.type = BTRFS_ROOT_REF_KEY;
++		search_key.offset = 0;
++		clear_path(&path);
++		if (search_tree(fs, __le64_to_cpu(sb.root), &search_key, &path))
++			next_slot(fs, &search_key, &path);
++		do {
++			do {
++				struct btrfs_root_ref *ref;
++				int pathlen;
++
++				if (btrfs_comp_keys_type(&search_key,
++							&path.item.key))
++					break;
++				ref = (struct btrfs_root_ref *)path.data;
++				pathlen =
++				path.item.size - sizeof(struct btrfs_root_ref);
++
++				debug("sub_vol found %s\n", (char *)(ref+1));
++				if (!strncmp((char *)(ref + 1),
++						subvolname, pathlen)) {
++					subvol_ok = 1;
++					break;
++				}
++			} while (!next_slot(fs, &search_key, &path));
++			if (subvol_ok)
++				break;
++			if (btrfs_comp_keys_type(&search_key, &path.item.key))
++				break;
++		} while (!next_leaf(fs, &search_key, &path));
++		if (!subvol_ok)
++			puts("no subvol found\n");
++	}
++	/* find fs_tree from tree_root */
++	if (subvol_ok)
++		search_key.objectid = path.item.key.offset;
++	else /* "default" volume */
++		search_key.objectid = BTRFS_FS_TREE_OBJECTID;
++	search_key.type = BTRFS_ROOT_ITEM_KEY;
++	search_key.offset = -1;
++	clear_path(&path);
++	search_tree(fs, (sb.root), &search_key, &path);
++	tree = (struct btrfs_root_item *)path.data;
++	fs_tree = tree->bytenr;
++}
++
++/* init. the fs meta data, return the block size shift bits. */
++int btrfs_fs_init(struct btrfs_info *fs)
++{
++	btrfs_read_super_block(fs);
++	if (strncmp((char *)(&sb.magic), BTRFS_MAGIC, sizeof(sb.magic)))
++		return -1;
++
++	btrfs_read_sys_chunk_array();
++	btrfs_read_chunk_tree(fs);
++	btrfs_get_fs_tree(fs);
++	fs->root = btrfs_iget_root(fs);
++	parent_inode = *(fs->root);
++
++	return 1;
++}
++static inline uint16_t file_to_handle(struct file *file)
++{
++	return file ? (file - files) + 1 : 0;
++}
++
++static inline struct file *handle_to_file(uint16_t handle)
++{
++	return handle ? &files[handle - 1] : NULL;
++}
++
++/*
++ * Free a refcounted inode
++ */
++void put_inode(struct inode *inode)
++{
++	while (inode && --inode->refcnt == 0) {
++		struct inode *dead = inode;
++		inode = inode->parent;
++		if (dead->name)
++			free((char *)dead->name);
++		free(dead);
++	}
++}
++
++/*
++ * Get a new inode structure
++ */
++struct inode *alloc_inode(struct btrfs_info *fs, uint32_t ino, size_t data)
++{
++	struct inode *inode = malloc(sizeof(struct inode) + data);
++
++	if (inode) {
++		inode->fs = fs;
++		inode->ino = ino;
++		inode->refcnt = 1;
++	}
++
++	return inode;
++}
++
++/*
++ * Get an empty file structure
++ */
++static struct file *alloc_file(void)
++{
++	int i;
++	struct file *file = files;
++
++	for (i = 0; i < BTRFS_MAX_OPEN; i++) {
++		if (!file->fs)
++			return file;
++
++		file++;
++	}
++
++	return NULL;
++}
++
++/*
++ * Close and free a file structure
++ */
++static inline void free_file(struct file *file)
++{
++	memset(file, 0, sizeof *file);
++}
++
++void close_file(struct file *file)
++{
++	if (file->inode) {
++		file->offset = 0;
++		put_inode(file->inode);
++	}
++}
++
++void btrfs_close_file(struct file *file)
++{
++	if (file->fs)
++		close_file(file);
++	free_file(file);
++}
++
++void btrfs_mangle_name(char *dst, const char *src)
++{
++	char *p = dst, ch, len;
++	int i = BTRFS_FILENAME_MAX-1;
++
++	len = strlen(src);
++	ch = *src;
++	while (!isspace(ch)) {
++		if (*src == '/') {
++			if (src[1] == '/') {
++				src++;
++				i--;
++				continue;
++			}
++		}
++		if (!len)
++			break;
++		i--;
++		len--;
++		*dst++ = *src++;
++		ch = *src;
++	}
++	while (1) {
++		if (dst == p)
++			break;
++		if (dst[-1] != '/')
++			break;
++		if ((dst[-1] == '/') && ((dst - 1) == p))
++			break;
++
++		dst--;
++		i++;
++	}
++
++	i++;
++	for (; i > 0; i--)
++		*dst++ = '\0';
++
++}
++
++int searchdir(const char *name)
++{
++	struct inode *inode = NULL;
++	struct inode *parent = &parent_inode;
++	struct file *file;
++	char *pathbuf = NULL;
++	char *part, *p, echar;
++	int symlink_count = BTRFS_MAX_SYMLINK_CNT;
++
++	file = alloc_file();
++	if (!(file))
++		goto err_no_close;
++
++	p = pathbuf = strdup(name);
++	if (!pathbuf)
++		goto err;
++
++	do {
++got_link:
++		if (*p == '/') {
++			put_inode(parent);
++			parent =  &parent_inode;
++		}
++
++		do {
++			inode = get_inode(parent);
++
++			while (*p == '/')
++				p++;
++
++			if (!*p)
++				break;
++
++			part = p;
++			while ((echar = *p) && echar != '/')
++				p++;
++			*p++ = '\0';
++			if (part[0] == '.' && part[1] == '.' &&
++						part[2] == '\0') {
++				if (inode->parent) {
++					put_inode(parent);
++					parent = get_inode(inode->parent);
++					put_inode(inode);
++					inode = NULL;
++					if (!echar) {
++						/* Terminal double dots */
++						inode = parent;
++						parent = inode->parent ?
++						get_inode(inode->parent) : NULL;
++					}
++				}
++			} else if (part[0] != '.' || part[1] != '\0') {
++				inode = btrfs_iget(part, parent);
++				if (!inode)
++					goto err;
++				if (inode->mode == BTRFS_DT_LNK) {
++					char *linkbuf, *q;
++					int name_len = echar ? strlen(p) : 0;
++					int total_len = inode->size +
++							name_len + 2;
++					int link_len;
++
++					if (--symlink_count == 0 ||
++					total_len > BTRFS_MAX_SYMLINK_BUF)
++						goto err;
++
++					linkbuf = malloc(total_len);
++					if (!linkbuf)
++						goto err;
++
++					link_len =
++						btrfs_readlink(inode, linkbuf);
++					if (link_len <= 0) {
++						free(linkbuf);
++						goto err;
++					}
++
++					q = linkbuf + link_len;
++
++					if (echar) {
++						if (link_len > 0 &&
++								q[-1] != '/')
++							*q++ = '/';
++						memcpy(q, p, name_len+1);
++					} else {
++						*q = '\0';
++					}
++
++					free(pathbuf);
++					p = pathbuf = linkbuf;
++					put_inode(inode);
++					inode = NULL;
++					goto got_link;
++				}
++
++				inode->name = (u8 *)strdup(part);
++
++				inode->parent = parent;
++				parent = NULL;
++
++				if (!echar)
++					break;
++
++				if (inode->mode != BTRFS_DT_DIR)
++					goto err;
++
++				parent = inode;
++				inode = NULL;
++			}
++		} while (echar);
++	} while (0);
++
++	free(pathbuf);
++	pathbuf = NULL;
++	put_inode(parent);
++	parent = NULL;
++
++	if (!inode)
++		goto err;
++
++	file->inode  = inode;
++	file->offset = 0;
++
++	return file_to_handle(file);
++
++err:
++	put_inode(inode);
++	put_inode(parent);
++	if (pathbuf != NULL)
++		free(pathbuf);
++	btrfs_close_file(file);
++err_no_close:
++	return -1;
++}
++
++int btrfs_open_file(const char *name, struct com32_filedata *filedata)
++{
++	int rv;
++	struct file *file;
++	char mangled_name[BTRFS_FILENAME_MAX];
++
++	btrfs_mangle_name(mangled_name, name);
++	rv = searchdir(mangled_name);
++	if (rv < 0)
++		return rv;
++
++	file = handle_to_file(rv);
++	filedata->size      = file->inode->size;
++	filedata->handle    = rv;
++
++	return rv;
++}
++
++static void get_next_extent(struct inode *inode)
++{
++	/* The logical start address that we care about... */
++	uint32_t lstart = inode->this_extent.lstart + inode->this_extent.len;
++
++	if (btrfs_next_extent(inode, lstart))
++		inode->next_extent.len = 0; /* ERROR */
++	inode->next_extent.lstart = lstart;
++}
++
++int getfssec(struct com32_filedata *filedata, char * buf)
++{
++	int sectors;
++	char have_more;
++	uint32_t bytes_read;
++	struct file *file;
++	if (filedata->size >= 512) {
++		sectors = filedata->size/BTRFS_SS;
++		sectors += (filedata->size%BTRFS_SS) ? 1 : 0;
++	} else
++		sectors = 2;
++
++	file = handle_to_file(filedata->handle);
++
++	bytes_read = btrfs_getfssec(file, buf, sectors, &have_more);
++
++	return bytes_read;
++}
++
++uint32_t generic_getfssec(struct file *file, char *buf,
++				int sectors, char *have_more)
++{
++	struct inode *inode = file->inode;
++	uint32_t bytes_read = 0;
++	uint32_t bytes_left = inode->size - file->offset;
++	uint32_t sectors_left = (bytes_left + BTRFS_SS - 1) >> 9;
++	uint32_t lsector;
++
++	if (sectors > sectors_left)
++		sectors = sectors_left;
++
++	if (!sectors)
++		return 0;
++
++	lsector = file->offset >> 9;
++
++	if (lsector < inode->this_extent.lstart ||
++		lsector >= inode->this_extent.lstart + inode->this_extent.len) {
++		/* inode->this_extent unusable, maybe next_extent is... */
++		inode->this_extent = inode->next_extent;
++	}
++
++	if (lsector < inode->this_extent.lstart ||
++	lsector >= inode->this_extent.lstart + inode->this_extent.len) {
++		/* Still nothing useful... */
++		inode->this_extent.lstart = lsector;
++		inode->this_extent.len = 0;
++	} else {
++		/* We have some usable information */
++		uint32_t delta = lsector - inode->this_extent.lstart;
++		inode->this_extent.lstart = lsector;
++		inode->this_extent.len -= delta;
++		inode->this_extent.pstart
++		    = next_psector(inode->this_extent.pstart, delta);
++	}
++
++	while (sectors) {
++		uint32_t chunk;
++		size_t len;
++
++		while (sectors > inode->this_extent.len) {
++			if (!inode->next_extent.len ||
++				inode->next_extent.lstart !=
++				inode->this_extent.lstart +
++						inode->this_extent.len)
++				get_next_extent(inode);
++			if (!inode->this_extent.len) {
++				/* Doesn't matter if it's contiguous... */
++				inode->this_extent = inode->next_extent;
++				if (!inode->next_extent.len) {
++					sectors = 0; /* Failed to get anything*/
++					break;
++				}
++			} else if (inode->next_extent.len &&
++				inode->next_extent.pstart ==
++					next_pstart(&inode->this_extent)) {
++				/* Coalesce extents and loop */
++				inode->this_extent.len +=
++						inode->next_extent.len;
++			} else {
++				/* Discontiguous extents */
++				break;
++			}
++		}
++
++		chunk = min(sectors, inode->this_extent.len);
++		len = chunk << 9;
++
++		if (inode->this_extent.pstart == BTRFS_EXTENT_ZERO) {
++			memset(buf, 0, len);
++		} else {
++			btrfs_block_dev_desc->block_read(
++				btrfs_block_dev_desc->dev, part_info->start +
++				(inode->this_extent.pstart), chunk, buf);
++			inode->this_extent.pstart += chunk;
++		}
++
++		 buf += len;
++		sectors -= chunk;
++		bytes_read += len;
++		inode->this_extent.lstart += chunk;
++		inode->this_extent.len -= chunk;
++	}
++
++	bytes_read = min(bytes_read, bytes_left);
++	file->offset += bytes_read;
++
++	if (have_more)
++		*have_more = bytes_read < bytes_left;
++
++	return bytes_read;
++}
++
++/*
++ * Open a directory
++ */
++struct _DIR_ *opendir(const char *path)
++{
++	int rv;
++	struct file *file;
++	rv = searchdir(path);
++	if (rv < 0)
++		return NULL;
++
++	file = handle_to_file(rv);
++
++	if (file->inode->mode != BTRFS_DT_DIR) {
++		btrfs_close_file(file);
++		return NULL;
++	}
++
++	return (struct _DIR_ *)file;
++}
++
++/*
++ * Read one directory entry at one time
++ */
++struct btrfs_dirent *readdir(struct _DIR_ *dir)
++{
++	static struct btrfs_dirent buf;
++	struct file *dd_dir = (struct file *)dir;
++	int rv = -1;
++
++	if (dd_dir)
++		rv = btrfs_readdir(dd_dir, &buf);
++
++	return rv < 0 ? NULL : &buf;
++}
++
++/*
++ *  Btrfs file-system Interface
++ *
++ */
++
++struct btrfs_info fs;
++
++/*
++ *  mount btrfs file-system
++ */
++int btrfs_probe(block_dev_desc_t *rbdd, disk_partition_t *info)
++{
++	btrfs_block_dev_desc = rbdd;
++	part_info = info;
++	btr_part_offset = info->start;
++	if (btrfs_fs_init(&fs) < 0) {
++		puts("btrfs probe failed\n");
++		return -1;
++	}
++
++	return 0;
++}
++
++/*
++ *  Read file data
++ */
++int btrfs_read_file(const char *filename, void *buf, int offset, int len)
++{
++	int file_len = 0;
++	int len_read;
++	struct com32_filedata filedata;
++	int handle;
++	if (offset != 0) {
++		puts("** Cannot support non-zero offset **\n");
++		return -1;
++	}
++
++	handle = btrfs_open_file(filename, &filedata);
++	if (handle < 0) {
++		debug("** File not found %s Invalid handle**\n", filename);
++		return -1;
++	}
++
++	/*file handle is valid get the size of the file*/
++	len = filedata.size;
++	if (len == 0)
++		len = file_len;
++
++	len_read = getfssec(&filedata, (char *)buf);
++	if (len_read != len) {
++		debug("** Unable to read file %s **\n", filename);
++		return -1;
++	}
++
++	return len_read;
++}
++
++/*
++ * Show directory entries
++ */
++int btrfs_ls(const char *dirn)
++{
++	struct btrfs_dirent *de;
++	char *dirname = (char *)dirn;
++	struct _DIR_ *dir;
++
++	if (*dirname == '/' && *(dirname+1) == 0)
++		*dirname = '.';
++
++	dir = opendir(dirname);
++	if (dir == NULL)
++		return -1;
++
++	/* readdir prints contents on media*/
++	de = readdir(dir);
++	while (de != NULL)
++		de = readdir(dir);
++
++	return 0;
++}
++
++/*
++ *  umount btrfs file-system
++ */
++void btrfs_close(void)
++{
++}
+diff --git a/fs/fs.c b/fs/fs.c
+index be1855d..3bca04c 100644
+--- a/fs/fs.c
++++ b/fs/fs.c
+@@ -17,6 +17,7 @@
+ #include <config.h>
+ #include <common.h>
+ #include <part.h>
++#include <btrfs.h>
+ #include <ext4fs.h>
+ #include <fat.h>
+ #include <fs.h>
+@@ -96,6 +97,15 @@ static struct fstype_info fstypes[] = {
+ 		.write = fs_write_sandbox,
+ 	},
+ #endif
++#ifdef CONFIG_FS_BTR
++	{
++		.fstype = FS_TYPE_BTR,
++		.probe = btrfs_probe,
++		.close = btrfs_close,
++		.ls = btrfs_ls,
++		.read = btrfs_read_file,
++	},
++#endif
+ 	{
+ 		.fstype = FS_TYPE_ANY,
+ 		.probe = fs_probe_unsupported,
+diff --git a/include/btrfs.h b/include/btrfs.h
+new file mode 100644
+index 0000000..6246670
+--- /dev/null
++++ b/include/btrfs.h
+@@ -0,0 +1,417 @@
++#ifndef _BTRFS_H_
++#define _BTRFS_H_
++
++#include <asm/byteorder.h>
++/* type that store on disk, but it is same as cpu type for i386 arch */
++
++#define BTRFS_CURRENTDIR_MAX		15
++#define BTRFS_MAX_OPEN			5
++#define BTRFS_FILENAME_MAX		20
++#define BTRFS_MAX_SYMLINK_CNT		20
++#define BTRFS_MAX_SYMLINK_BUF		4096
++#define BTRFS_SECTOR_SHIFT(fs)		((fs)->sector_shift)
++#define BTRFS_IFTODT(mode)		(((mode) & 0170000) >> 12)
++#define BTRFS_SECTOR_SIZE		0x200
++#define BTRFS_SECTOR_BITS		9
++#define BTRFS_EXTENT_ZERO		((uint32_t)-1) /* All-zero extent */
++#define BTRFS_EXTENT_VOID		((uint32_t)-2) /* Invalid information */
++#define BTRFS_DT_LNK			10
++#define BTRFS_DT_REG			8
++#define BTRFS_DT_DIR			4
++#define EXTENT_SPECIAL(x)		((x) >= BTRFS_EXTENT_VOID)
++#define BTRFS_MAX_SUBVOL_NAME		50
++
++#define BTRFS_FILE			1
++#define BTRFS_DIR			2
++#define BTRFS_SYMLNK			7
++#define BTRFS_SS			BTRFS_SECTOR_SIZE
++
++extern char subvolname[BTRFS_MAX_SUBVOL_NAME];
++struct _DIR_;
++
++struct com32_filedata {
++	size_t size;                /* File size */
++	int blocklg2;               /* log2(block size) */
++	uint16_t handle;            /* File handle */
++};
++
++struct btrfs_info {
++	const struct fs_ops *fs_ops;
++	struct device *fs_dev;
++	void *btrfs_info;             /* The fs-specific information */
++	int sector_shift, sector_size;
++	int block_shift, block_size;
++	struct inode *root, *cwd;           /* Root and current directories */
++	char cwd_name[BTRFS_CURRENTDIR_MAX]; /* Current directory by name */
++};
++/*
++ * Extent structure: contains the mapping of some chunk of a file
++ * that is contiguous on disk.
++ */
++struct extent {
++	uint64_t   pstart;
++	uint32_t    lstart;         /* Logical start sector */
++	uint32_t    len;            /* Number of contiguous sectors */
++} __packed;
++
++
++struct inode {
++	struct btrfs_info *fs;  /* The filesystem inode is associated with */
++	struct inode *parent;       /* Parent directory, if any */
++	const u8 *name;           /* Name, valid for generic path search only */
++	uint32_t          refcnt;
++	uint32_t       mode;   /* FILE , DIR or SYMLINK */
++	uint32_t     size;
++	uint32_t     blocks; /* How many blocks the file take */
++	uint32_t     ino;    /* Inode number */
++	uint32_t     atime;  /* Access time */
++	uint32_t     mtime;  /* Modify time */
++	uint32_t     ctime;  /* Create time */
++	uint32_t     dtime;  /* Delete time */
++	uint32_t     flags;
++	uint32_t     file_acl;
++	struct extent this_extent, next_extent;
++	u8         pvt[0]; /* Private filesystem data */
++} __packed;
++struct file {
++	struct btrfs_info *fs;
++	uint64_t offset;            /* for next read */
++	struct inode *inode;        /* The file-specific information */
++} __packed;
++
++#define NAME_MAX 20
++struct btrfs_dirent {
++	uint32_t d_ino;
++	uint32_t d_off;
++	uint16_t d_reclen;
++	uint16_t d_type;
++	char d_name[NAME_MAX + 1];
++};
++
++#define btrfs_crc32c			crc32c_le
++
++#define BTRFS_SUPER_INFO_OFFSET		(64 * 1024)
++#define BTRFS_SUPER_INFO_SIZE		4096
++#define BTRFS_MAX_LEAF_SIZE		4096
++#define BTRFS_BLOCK_SHIFT		12
++
++#define BTRFS_SUPER_MIRROR_MAX		3
++#define BTRFS_SUPER_MIRROR_SHIFT	12
++#define BTRFS_CSUM_SIZE			32
++#define BTRFS_FSID_SIZE			16
++#define BTRFS_LABEL_SIZE		256
++#define BTRFS_SYSTEM_CHUNK_ARRAY_SIZE	2048
++#define BTRFS_UUID_SIZE			16
++
++#define BTRFS_MAGIC			"_BHRfS_M"
++
++#define BTRFS_SUPER_FLAG_METADUMP	(1ULL << 33)
++
++#define BTRFS_DEV_ITEM_KEY		216
++#define BTRFS_CHUNK_ITEM_KEY		228
++#define BTRFS_ROOT_REF_KEY		156
++#define BTRFS_ROOT_ITEM_KEY		132
++#define BTRFS_EXTENT_DATA_KEY		108
++#define BTRFS_DIR_ITEM_KEY		84
++#define BTRFS_INODE_ITEM_KEY		1
++
++#define BTRFS_EXTENT_TREE_OBJECTID	2ULL
++#define BTRFS_FS_TREE_OBJECTID		5ULL
++
++#define BTRFS_FIRST_CHUNK_TREE_OBJECTID	256ULL
++
++#define BTRFS_FILE_EXTENT_INLINE	0
++#define BTRFS_FILE_EXTENT_REG		1
++#define BTRFS_FILE_EXTENT_PREALLOC	2
++
++#define BTRFS_MAX_LEVEL			8
++#define BTRFS_MAX_CHUNK_ENTRIES		256
++
++#define BTRFS_FT_REG_FILE		1
++#define BTRFS_FT_DIR			2
++#define BTRFS_FT_SYMLINK		7
++
++#define ROOT_DIR_WORD			0x002f
++
++struct btrfs_dev_item {
++	uint64_t devid;
++	uint64_t total_bytes;
++	uint64_t bytes_used;
++	uint32_t io_align;
++	uint32_t io_width;
++	uint32_t sector_size;
++	uint64_t type;
++	uint64_t generation;
++	uint64_t start_offset;
++	uint32_t dev_group;
++	u8 seek_speed;
++	u8 bandwidth;
++	u8 uuid[BTRFS_UUID_SIZE];
++	u8 fsid[BTRFS_UUID_SIZE];
++} __packed;
++
++struct btrfs_super_block {
++	u8 csum[BTRFS_CSUM_SIZE];
++	/* the first 4 fields must match struct btrfs_header */
++	u8 fsid[BTRFS_FSID_SIZE];    /* FS specific uuid */
++	uint64_t bytenr; /* this block number */
++	uint64_t flags;
++
++	/* allowed to be different from the btrfs_header from here own down */
++	uint64_t magic;
++	uint64_t generation;
++	uint64_t root;
++	uint64_t chunk_root;
++	uint64_t log_root;
++
++	/* this will help find the new super based on the log root */
++	uint64_t log_root_transid;
++	uint64_t total_bytes;
++	uint64_t bytes_used;
++	uint64_t root_dir_objectid;
++	uint64_t num_devices;
++	uint32_t sectorsize;
++	uint32_t nodesize;
++	uint32_t leafsize;
++	uint32_t stripesize;
++	uint32_t sys_chunk_array_size;
++	uint64_t chunk_root_generation;
++	uint64_t compat_flags;
++	uint64_t compat_ro_flags;
++	uint64_t incompat_flags;
++	__le16 csum_type;
++	u8 root_level;
++	u8 chunk_root_level;
++	u8 log_root_level;
++	struct btrfs_dev_item dev_item;
++
++	char label[BTRFS_LABEL_SIZE];
++
++	uint64_t cache_generation;
++
++	/* future expansion */
++	uint64_t reserved[31];
++	u8 sys_chunk_array[BTRFS_SYSTEM_CHUNK_ARRAY_SIZE];
++} __packed;
++
++struct btrfs_disk_key {
++	uint64_t objectid;
++	u8 type;
++	uint64_t offset;
++} __packed;
++
++struct btrfs_stripe {
++	uint64_t devid;
++	uint64_t offset;
++	u8 dev_uuid[BTRFS_UUID_SIZE];
++} __packed;
++
++struct btrfs_chunk {
++	uint64_t length;
++	uint64_t owner;
++	uint64_t stripe_len;
++	uint64_t type;
++	uint32_t io_align;
++	uint32_t io_width;
++	uint32_t sector_size;
++	__le16 num_stripes;
++	__le16 sub_stripes;
++	struct btrfs_stripe stripe;
++} __packed;
++
++struct btrfs_header {
++	/* these first four must match the super block */
++	u8 csum[BTRFS_CSUM_SIZE];
++	u8 fsid[BTRFS_FSID_SIZE]; /* FS specific uuid */
++	uint64_t bytenr; /* which block this node is supposed to live in */
++	uint64_t flags;
++
++	/* allowed to be different from the super from here on down */
++	u8 chunk_tree_uuid[BTRFS_UUID_SIZE];
++	uint64_t generation;
++	uint64_t owner;
++	uint32_t nritems;
++	u8 level;
++} __packed;
++
++struct btrfs_item {
++	struct btrfs_disk_key key;
++	uint32_t offset;
++	uint32_t size;
++} __packed;
++
++struct btrfs_leaf {
++	struct btrfs_header header;
++	struct btrfs_item items[];
++} __packed;
++
++struct btrfs_key_ptr {
++	struct btrfs_disk_key key;
++	uint64_t blockptr;
++	uint64_t generation;
++} __packed;
++
++struct btrfs_node {
++	struct btrfs_header header;
++	struct btrfs_key_ptr ptrs[];
++} __packed;
++
++/* remember how we get to a node/leaf */
++struct btrfs_path {
++	uint64_t offsets[BTRFS_MAX_LEVEL];
++	uint32_t itemsnr[BTRFS_MAX_LEVEL];
++	uint32_t slots[BTRFS_MAX_LEVEL];
++	/* remember last slot's item and data */
++	struct btrfs_item item;
++	u32 data[BTRFS_MAX_LEAF_SIZE];
++};
++
++/* store logical offset to physical offset mapping */
++struct btrfs_chunk_map_item {
++	uint64_t logical;
++	uint64_t length;
++	uint64_t devid;
++	uint64_t physical;
++};
++
++struct btrfs_chunk_map {
++	struct btrfs_chunk_map_item *map;
++	uint32_t map_length;
++	uint32_t cur_length;
++};
++
++struct btrfs_timespec {
++	uint64_t sec;
++	uint32_t nsec;
++} __packed;
++
++struct btrfs_inode_item {
++	/* nfs style generation number */
++	uint64_t generation;
++	/* transid that last touched this inode */
++	uint64_t transid;
++	uint64_t size;
++	uint64_t nbytes;
++	uint64_t block_group;
++	uint32_t nlink;
++	uint32_t uid;
++	uint32_t gid;
++	uint32_t mode;
++	uint64_t rdev;
++	uint64_t flags;
++
++	/* modification sequence number for NFS */
++	uint64_t sequence;
++
++	/*
++	 * a little future expansion, for more than this we can
++	 * just grow the inode item and version it
++	 */
++	uint64_t reserved[4];
++	struct btrfs_timespec atime;
++	struct btrfs_timespec ctime;
++	struct btrfs_timespec mtime;
++	struct btrfs_timespec otime;
++} __packed;
++
++struct btrfs_root_item {
++	struct btrfs_inode_item inode;
++	uint64_t generation;
++	uint64_t root_dirid;
++	uint64_t bytenr;
++	uint64_t byte_limit;
++	uint64_t bytes_used;
++	uint64_t last_snapshot;
++	uint64_t flags;
++	uint32_t refs;
++	struct btrfs_disk_key drop_progress;
++	u8 drop_level;
++	u8 level;
++} __packed;
++
++struct btrfs_dir_item {
++	struct btrfs_disk_key location;
++	uint64_t transid;
++	__le16 data_len;
++	__le16 name_len;
++	u8 type;
++} __packed;
++
++struct btrfs_file_extent_item {
++	uint64_t generation;
++	uint64_t ram_bytes;
++	u8 compression;
++	u8 encryption;
++	__le16 other_encoding; /* spare for later use */
++	u8 type;
++	uint64_t disk_bytenr;
++	uint64_t disk_num_bytes;
++	uint64_t offset;
++	uint64_t num_bytes;
++} __packed;
++
++struct btrfs_root_ref {
++	uint64_t dirid;
++	uint64_t sequence;
++	__le16 name_len;
++} __packed;
++
++/*
++ * btrfs private inode information
++ */
++struct btrfs_pvt_inode {
++	uint64_t offset;
++};
++
++
++int btrfs_probe(block_dev_desc_t *rbdd , disk_partition_t *info);
++
++/*
++ *search through disk and mount file-system
++ */
++int btrfs_fs_init(struct btrfs_info *fs);
++
++/*
++ *save inode in list
++ */
++void put_inode(struct inode *inode);
++
++/*
++ *memory allocation for new inode
++ */
++struct inode *alloc_inode(struct btrfs_info *fs, uint32_t ino, size_t data);
++
++/*
++ * open btrfs file
++ */
++int btrfs_open_file(const char *name, struct com32_filedata *filedata);
++/*
++ * reading data from file
++ */
++int getfssec(struct com32_filedata *filedata, char *buf);
++uint32_t generic_getfssec(struct file *file, char *buf,
++				int sectors, char *have_more);
++
++/*
++ * mount btrfs file-system
++ */
++int btrfs_probe(block_dev_desc_t *rbdd , disk_partition_t *info);
++
++/*
++ * listing file/directory on btrfs partition/disk
++ */
++int btrfs_ls(const char *);
++
++/*
++ * read file data
++ */
++int btrfs_read_file(const char *filename, void *buf, int offset, int len);
++
++/*
++ * umount btrfs file-system
++ */
++void btrfs_close(void);
++
++#define PVT(i) ((struct btrfs_pvt_inode *)((i)->pvt))
++
++#endif
+diff --git a/include/config_fallbacks.h b/include/config_fallbacks.h
+index 3633b09..daa99c6 100644
+--- a/include/config_fallbacks.h
++++ b/include/config_fallbacks.h
+@@ -42,6 +42,10 @@
+ #define CONFIG_EXT4_WRITE
+ #endif
+ 
++#if defined(CONFIG_CMD_BTR) && !defined(CONFIG_FS_BTR)
++#define CONFIG_FS_BTR
++#endif
++
+ /* Rather than repeat this expression each time, add a define for it */
+ #if defined(CONFIG_CMD_IDE) || \
+ 	defined(CONFIG_CMD_SATA) || \
+diff --git a/include/crc.h b/include/crc.h
+index 5085d4e..216a172 100644
+--- a/include/crc.h
++++ b/include/crc.h
+@@ -66,4 +66,9 @@ cyg_ether_crc32_accumulate(uint32_t crc, unsigned char *s, int len);
+ 
+ extern uint16_t cyg_crc16(unsigned char *s, int len);
+ 
++
++/* CRC calculate for btrfs file-system*/
++
++u32 crc32c_cal(u32 crc, const char *data, size_t length);
++
+ #endif /* _SERVICES_CRC_CRC_H_ */
+diff --git a/include/fs.h b/include/fs.h
+index 7d9403e..a4192ab 100644
+--- a/include/fs.h
++++ b/include/fs.h
+@@ -22,6 +22,7 @@
+ #define FS_TYPE_FAT	1
+ #define FS_TYPE_EXT	2
+ #define FS_TYPE_SANDBOX	3
++#define FS_TYPE_BTR	4
+ 
+ /*
+  * Tell the fs layer which block device an partition to use for future
+diff --git a/lib/Makefile b/lib/Makefile
+index e787f77..5d17656 100644
+--- a/lib/Makefile
++++ b/lib/Makefile
+@@ -51,6 +51,7 @@ obj-y += errno.o
+ COBJS-y += display_options.o
+ COBJS-$(CONFIG_BCH) += bch.o
+ COBJS-y += crc32.o
++COBJS-y += crc32_c.o
+ COBJS-y += ctype.o
+ COBJS-y += div64.o
+ COBJS-y += hang.o
+diff --git a/lib/crc32_c.c b/lib/crc32_c.c
+new file mode 100644
+index 0000000..a6bc17d
+--- /dev/null
++++ b/lib/crc32_c.c
+@@ -0,0 +1,108 @@
++/*
++ * Copied from Linux kernel crypto/crc32c.c
++ * Copyright (c) 2004 Cisco Systems, Inc.
++ * Copyright (c) 2008 Herbert Xu <herbert@gondor.apana.org.au>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the Free
++ * Software Foundation; either version 2 of the License, or (at your option)
++ * any later version.
++ *
++ */
++#include <linux/stat.h>
++#include <command.h>
++#include <asm/byteorder.h>
++#include <linux/compiler.h>
++#include <common.h>
++#include <config.h>
++
++#if defined(CONFIG_HW_WATCHDOG) || defined(CONFIG_WATCHDOG)
++#include <watchdog.h>
++#endif
++#include <u-boot/crc.h>
++
++#define __BYTE_ORDER	__LITTLE_ENDIAN
++
++static const uint32_t crc32c_table[256] = {
++	(0x00000000), (0xf26b8303), (0xe13b70f7), (0x1350f3f4),
++	(0xc79a971f), (0x35f1141c), (0x26a1e7e8), (0xd4ca64eb),
++	(0x8ad958cf), (0x78b2dbcc), (0x6be22838), (0x9989ab3b),
++	(0x4d43cfd0), (0xbf284cd3), (0xac78bf27), (0x5e133c24),
++	(0x105ec76f), (0xe235446c), (0xf165b798), (0x030e349b),
++	(0xd7c45070), (0x25afd373), (0x36ff2087), (0xc494a384),
++	(0x9a879fa0), (0x68ec1ca3), (0x7bbcef57), (0x89d76c54),
++	(0x5d1d08bf), (0xaf768bbc), (0xbc267848), (0x4e4dfb4b),
++	(0x20bd8ede), (0xd2d60ddd), (0xc186fe29), (0x33ed7d2a),
++	(0xe72719c1), (0x154c9ac2), (0x061c6936), (0xf477ea35),
++	(0xaa64d611), (0x580f5512), (0x4b5fa6e6), (0xb93425e5),
++	(0x6dfe410e), (0x9f95c20d), (0x8cc531f9), (0x7eaeb2fa),
++	(0x30e349b1), (0xc288cab2), (0xd1d83946), (0x23b3ba45),
++	(0xf779deae), (0x05125dad), (0x1642ae59), (0xe4292d5a),
++	(0xba3a117e), (0x4851927d), (0x5b016189), (0xa96ae28a),
++	(0x7da08661), (0x8fcb0562), (0x9c9bf696), (0x6ef07595),
++	(0x417b1dbc), (0xb3109ebf), (0xa0406d4b), (0x522bee48),
++	(0x86e18aa3), (0x748a09a0), (0x67dafa54), (0x95b17957),
++	(0xcba24573), (0x39c9c670), (0x2a993584), (0xd8f2b687),
++	(0x0c38d26c), (0xfe53516f), (0xed03a29b), (0x1f682198),
++	(0x5125dad3), (0xa34e59d0), (0xb01eaa24), (0x42752927),
++	(0x96bf4dcc), (0x64d4cecf), (0x77843d3b), (0x85efbe38),
++	(0xdbfc821c), (0x2997011f), (0x3ac7f2eb), (0xc8ac71e8),
++	(0x1c661503), (0xee0d9600), (0xfd5d65f4), (0x0f36e6f7),
++	(0x61c69362), (0x93ad1061), (0x80fde395), (0x72966096),
++	(0xa65c047d), (0x5437877e), (0x4767748a), (0xb50cf789),
++	(0xeb1fcbad), (0x197448ae), (0x0a24bb5a), (0xf84f3859),
++	(0x2c855cb2), (0xdeeedfb1), (0xcdbe2c45), (0x3fd5af46),
++	(0x7198540d), (0x83f3d70e), (0x90a324fa), (0x62c8a7f9),
++	(0xb602c312), (0x44694011), (0x5739b3e5), (0xa55230e6),
++	(0xfb410cc2), (0x092a8fc1), (0x1a7a7c35), (0xe811ff36),
++	(0x3cdb9bdd), (0xceb018de), (0xdde0eb2a), (0x2f8b6829),
++	(0x82f63b78), (0x709db87b), (0x63cd4b8f), (0x91a6c88c),
++	(0x456cac67), (0xb7072f64), (0xa457dc90), (0x563c5f93),
++	(0x082f63b7), (0xfa44e0b4), (0xe9141340), (0x1b7f9043),
++	(0xcfb5f4a8), (0x3dde77ab), (0x2e8e845f), (0xdce5075c),
++	(0x92a8fc17), (0x60c37f14), (0x73938ce0), (0x81f80fe3),
++	(0x55326b08), (0xa759e80b), (0xb4091bff), (0x466298fc),
++	(0x1871a4d8), (0xea1a27db), (0xf94ad42f), (0x0b21572c),
++	(0xdfeb33c7), (0x2d80b0c4), (0x3ed04330), (0xccbbc033),
++	(0xa24bb5a6), (0x502036a5), (0x4370c551), (0xb11b4652),
++	(0x65d122b9), (0x97baa1ba), (0x84ea524e), (0x7681d14d),
++	(0x2892ed69), (0xdaf96e6a), (0xc9a99d9e), (0x3bc21e9d),
++	(0xef087a76), (0x1d63f975), (0x0e330a81), (0xfc588982),
++	(0xb21572c9), (0x407ef1ca), (0x532e023e), (0xa145813d),
++	(0x758fe5d6), (0x87e466d5), (0x94b49521), (0x66df1622),
++	(0x38cc2a06), (0xcaa7a905), (0xd9f75af1), (0x2b9cd9f2),
++	(0xff56bd19), (0x0d3d3e1a), (0x1e6dcdee), (0xec064eed),
++	(0xc38d26c4), (0x31e6a5c7), (0x22b65633), (0xd0ddd530),
++	(0x0417b1db), (0xf67c32d8), (0xe52cc12c), (0x1747422f),
++	(0x49547e0b), (0xbb3ffd08), (0xa86f0efc), (0x5a048dff),
++	(0x8ecee914), (0x7ca56a17), (0x6ff599e3), (0x9d9e1ae0),
++	(0xd3d3e1ab), (0x21b862a8), (0x32e8915c), (0xc083125f),
++	(0x144976b4), (0xe622f5b7), (0xf5720643), (0x07198540),
++	(0x590ab964), (0xab613a67), (0xb831c993), (0x4a5a4a90),
++	(0x9e902e7b), (0x6cfbad78), (0x7fab5e8c), (0x8dc0dd8f),
++	(0xe330a81a), (0x115b2b19), (0x020bd8ed), (0xf0605bee),
++	(0x24aa3f05), (0xd6c1bc06), (0xc5914ff2), (0x37faccf1),
++	(0x69e9f0d5), (0x9b8273d6), (0x88d28022), (0x7ab90321),
++	(0xae7367ca), (0x5c18e4c9), (0x4f48173d), (0xbd23943e),
++	(0xf36e6f75), (0x0105ec76), (0x12551f82), (0xe03e9c81),
++	(0x34f4f86a), (0xc69f7b69), (0xd5cf889d), (0x27a40b9e),
++	(0x79b737ba), (0x8bdcb4b9), (0x988c474d), (0x6ae7c44e),
++	(0xbe2da0a5), (0x4c4623a6), (0x5f16d052), (0xad7d5351),
++};
++
++/* ========================================================================= */
++# if __BYTE_ORDER == __LITTLE_ENDIAN
++#  define DO_CRC(x) crc = crc32c_table[(crc ^ (x)) & 255] ^ (crc >> 8)
++# else
++#  define DO_CRC(x) crc = crc32c_table[((crc >> 24) ^ (x)) & 255] ^ (crc << 8)
++# endif
++
++u32 crc32c_cal(u32 crc, const char *data, size_t length)
++{
++	while (length--)
++		crc = DO_CRC(*data++);
++#if defined(CONFIG_HW_WATCHDOG) || defined(CONFIG_WATCHDOG)
++	WATCHDOG_RESET();
++#endif
++	return crc;
++}
+
+EOF

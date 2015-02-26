@@ -1,3 +1,12 @@
+btrfs_patch()
+{
+
+    test -e /tmp/002.patch || return
+    patch -p1 --dry-run < /tmp/002.patch || return 
+
+    patch -p1 < /tmp/002.patch
+}
+
 
 case $config_platform_branch in
     bpi*)
@@ -27,12 +36,19 @@ else
     cd .uboot
 fi
 
-[ $needcompile = yes ] || return 0
+(
+. $(dirname $0)/0-patch-uboot-btrfs.variant1
+. $(dirname $0)/0-patch-uboot-btrfs.variant2
+)
+
+[ $needcompile = yes -o .needcompile ] || return 0
 
 echo "BUILDING U-BOOT... Please wait"
 
 eval $config_build_env make BananaPro_config
 eval $config_build_env make
+
+rm -f .needcompile
 
 set +e
 

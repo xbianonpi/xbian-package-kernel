@@ -27,11 +27,18 @@ else
     cd .uboot
 fi
 
-[ $needcompile = yes ] || return 0
+(
+. $(dirname $0)/1-patch-uboot-btrfs-patch.variant1
+. $(dirname $0)/1-patch-uboot-btrfs-patch.variant2
+)
+
+[ $needcompile = yes -o .needcompile ] || return 0
 
 echo "BUILDING U-BOOT... Please wait"
 
 eval $config_build_env make rk30xx
+
+rm -f .needcompile
 
 set +e
 

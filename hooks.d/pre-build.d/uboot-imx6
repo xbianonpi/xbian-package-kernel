@@ -27,13 +27,30 @@ else
     cd .uboot
 fi
 
-[ $needcompile = yes ] || return 0
+(
+. $(dirname $0)/0-patch-uboot-btrfs.variant1
+. $(dirname $0)/0-patch-uboot-btrfs.variant2
+)
+
+[ $needcompile = yes -o -e .needcompile ] || return 0
 
 echo "BUILDING U-BOOT... Please wait"
 
 cat << \EOF > /tmp/001.patch
 --- a/include/configs/mx6_cubox-i.h
 +++ b/include/configs/mx6_cubox-i.h
+@@ -96,6 +96,11 @@
+ #define CONFIG_DOS_PARTITION
+ #define CONFIG_FS_EXT4
+ #define CONFIG_FS_FAT
++#define CONFIG_FS_BTR
++#define CONFIG_FS_ZFS
++#define CONFIG_EFI_PARTITION
++#define CONFIG_CMD_BTR
++#define CONFIG_CMD_ZFS
+ #define CONFIG_CMD_FS_GENERIC
+ 
+ /* Ethernet Configuration */
 @@ -305,11 +305,11 @@ extern char *config_sys_prompt;
  #define CONFIG_SYS_PROMPT_MAX_CHARS	32
  #define CONFIG_SYS_PROMPT		config_sys_prompt
@@ -77,7 +94,9 @@ EOF
 patch -p1 -F 3000 < /tmp/001.patch  >/dev/null 2>&1
 
 eval $config_build_env make mx6_cubox-i_config >/dev/null 2>&1
-eval $config_build_env make  >/dev/null 2>&1
+eval $config_build_env make >/dev/null 2>&1
+
+rm -f .needcompile
 
 set +e
 

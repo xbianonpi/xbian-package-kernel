@@ -1,0 +1,16 @@
+btrfs_patch()
+{
+
+    test -e /tmp/003.patch || return 0
+
+    test -d .uboot || return 0
+    cd .uboot
+
+    patch -p1 --dry-run < /tmp/003.patch  || return 0
+
+    patch -p1 < /tmp/003.patch || return 1
+    touch .needcompile
+}
+
+btrfs_patch 1>/dev/null 2>&1
+
