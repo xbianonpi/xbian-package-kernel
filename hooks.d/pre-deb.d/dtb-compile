@@ -1,9 +1,15 @@
 
 case $config_platform_branch in
     imx6*)
-        cp ../build/$config_platform_branch/working/arch/arm/boot/dts/*.dtb ./boot
+        tgt='./boot'
+        ;;
+    rpi*|rpi2*)
+        tgt='./boot-new'
         ;;
     *)
+        return 0
         ;;
 esac
 
+mkdir -p $tgt
+cp ../build/$config_platform_branch/working/arch/arm/boot/dts/*.dtb $tgt || :

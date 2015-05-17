@@ -22,7 +22,7 @@ if [ $1 == "configure" ]; then
                     uboot-env del -i || uboot-env del -I
                     uboot-env set < /etc/uboot-env/default.txt
                     uboot-env set script boot.scr
-                    uboot-env set bootdelay 0
+                    uboot-env set bootdelay 2
                 fi
             fi
 
@@ -45,11 +45,14 @@ if [ $1 == "configure" ]; then
             if [ -e /boot/boot.scr.txt.user ]; then
                 ### keep video= from previous conf
                 res=$(grep video=mxcfb0:dev= /boot/boot.scr.txt.user); res=${res##*video=mxcfb0\:dev=}; res=${res%% *};
-                sed -i "s%hdmi,1920x1080@60,if=RGB24%$res%" /boot/boot.scr.txt
+                sed -i "s%hdmi,1920x1080.*@60,if=RGB24%$res%" /boot/boot.scr.txt
 
                 ### keep customcmdline from previous conf
                 ccl=$(grep 'setenv customcmdline' /boot/boot.scr.txt.user)
                 echo $ccl | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
+                echo $ccl | grep -q 'mxc_hdmi.enable_3d' || ccl="$ccl mxc_hdmi.enable_3d=enable"
+                echo $ccl | grep -q 'vpu352=' || ccl="$ccl vpu352=0"
+                ###echo $ccl | grep -q 'cma=' || ccl="$ccl cma=256M"
                 [ -z "$ccl" ] || sed -i "s%setenv customcmdline.*%$ccl%" /boot/boot.scr.txt
 
                 rm -f /boot/boot.scr.txt.user

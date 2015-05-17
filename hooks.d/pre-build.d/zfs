@@ -30,12 +30,20 @@ for rr in .zfs .spl; do
             git clean -dfx  >/dev/null 2>&1
             git fetch
             git reset --hard origin/master
-        fi )
+        fi
+
+        ### until 4.1 support is merged
+        [ $rr = ".zfs" ] && { patch -p1 --dry-run < ../../../../extra-files/zfs.41.kernel.patch > /dev/null 2>&1 && patch -p1 < ../../../../extra-files/zfs.41.kernel.patch && ./autogen.sh; } || :
+        )
     else
         git clone -b master --depth=1 --single-branch "$giturl" $rr
 	if [ $rr = ".zfs" ]; then
 		cd .zfs
-		patch -p1 < ../../../../extra-files/0001-Fixes-for-accessing-snapshots-over-NFS.patch
+		### NFS patch doesn't merge anymore
+		#patch -p1 < ../../../../extra-files/0001-Fixes-for-accessing-snapshots-over-NFS.patch
+
+		### until 4.1 support is merged
+		patch -p1 < ../../../../extra-files/zfs.41.kernel.patch
 		cd ..
 	fi
     fi

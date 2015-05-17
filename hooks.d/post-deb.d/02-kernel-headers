@@ -6,7 +6,7 @@ echo "Creating kernel headers package. This may take a while."
 kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 dver=$(cat $DEST/DEBIAN/control | grep Version: | awk '{print $2}')
 [ -z "$dver" ] && dver=$kver
-DESTHEAD=$DEST/usr/src/linux-headers-$kver
+DESTHEAD=$(echo $DEST/usr/src/linux-headers-$kver | tr '~' '-')
 
 echo "... cleaning tmp dir"
 ( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; mkdir -p $DESTHEAD; )
@@ -23,6 +23,7 @@ echo "... done"
 
 case $config_platform_branch in
     imx6*)
+        kvr=${kver%%~*}
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-headers-armmp
@@ -32,8 +33,8 @@ Essential: No
 Priority: optional
 Architecture: armhf
 Depends: libc6-dev, make, gcc, linux-image-armmp (= $dver)
-Provides: linux-headers, linux-headers-${kver%+}
-Conflicts: linux-headers, linux-headers-${kver%+}
+Provides: linux-headers, linux-headers-${kvr%+}
+Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
 Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)

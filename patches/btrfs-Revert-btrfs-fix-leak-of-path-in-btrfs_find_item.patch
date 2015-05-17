@@ -1,0 +1,102 @@
+commit 780f9a9a3a1274b53b1a7083ad2da7017a6624aa
+Author: Matus Kral <matuskral@me.com>
+Date:   Tue May 5 22:51:24 2015 +0200
+
+    Revert "btrfs: fix leak of path in btrfs_find_item"
+    
+    This reverts commit 751e276c003c2cf6f87237b5d8a91628ab542447.
+
+diff --git a/fs/btrfs/ctree.c b/fs/btrfs/ctree.c
+index c81ce0c..150822e 100644
+--- a/fs/btrfs/ctree.c
++++ b/fs/btrfs/ctree.c
+@@ -2609,23 +2609,32 @@ static int key_search(struct extent_buffer *b, struct btrfs_key *key,
+ 	return 0;
+ }
+ 
+-int btrfs_find_item(struct btrfs_root *fs_root, struct btrfs_path *path,
++int btrfs_find_item(struct btrfs_root *fs_root, struct btrfs_path *found_path,
+ 		u64 iobjectid, u64 ioff, u8 key_type,
+ 		struct btrfs_key *found_key)
+ {
+ 	int ret;
+ 	struct btrfs_key key;
+ 	struct extent_buffer *eb;
+-
+-	ASSERT(path);
++	struct btrfs_path *path;
+ 
+ 	key.type = key_type;
+ 	key.objectid = iobjectid;
+ 	key.offset = ioff;
+ 
++	if (found_path == NULL) {
++		path = btrfs_alloc_path();
++		if (!path)
++			return -ENOMEM;
++	} else
++		path = found_path;
++
+ 	ret = btrfs_search_slot(NULL, fs_root, &key, path, 0, 0);
+-	if ((ret < 0) || (found_key == NULL))
++	if ((ret < 0) || (found_key == NULL)) {
++		if (path != found_path)
++			btrfs_free_path(path);
+ 		return ret;
++	}
+ 
+ 	eb = path->nodes[0];
+ 	if (ret && path->slots[0] >= btrfs_header_nritems(eb)) {
+diff --git a/fs/btrfs/disk-io.c b/fs/btrfs/disk-io.c
+index b170983..b05efd2 100644
+--- a/fs/btrfs/disk-io.c
++++ b/fs/btrfs/disk-io.c
+@@ -1630,7 +1630,6 @@ struct btrfs_root *btrfs_get_fs_root(struct btrfs_fs_info *fs_info,
+ 				     bool check_ref)
+ {
+ 	struct btrfs_root *root;
+-	struct btrfs_path *path;
+ 	int ret;
+ 
+ 	if (location->objectid == BTRFS_ROOT_TREE_OBJECTID)
+@@ -1670,14 +1669,8 @@ again:
+ 	if (ret)
+ 		goto fail;
+ 
+-	path = btrfs_alloc_path();
+-	if (!path) {
+-		ret = -ENOMEM;
+-		goto fail;
+-	}
+-	ret = btrfs_find_item(fs_info->tree_root, path, BTRFS_ORPHAN_OBJECTID,
++	ret = btrfs_find_item(fs_info->tree_root, NULL, BTRFS_ORPHAN_OBJECTID,
+ 			location->objectid, BTRFS_ORPHAN_ITEM_KEY, NULL);
+-	btrfs_free_path(path);
+ 	if (ret < 0)
+ 		goto fail;
+ 	if (ret == 0)
+diff --git a/fs/btrfs/tree-log.c b/fs/btrfs/tree-log.c
+index 8b40b35..a9e92ff 100644
+--- a/fs/btrfs/tree-log.c
++++ b/fs/btrfs/tree-log.c
+@@ -1269,19 +1269,10 @@ static int insert_orphan_item(struct btrfs_trans_handle *trans,
+ 			      struct btrfs_root *root, u64 offset)
+ {
+ 	int ret;
+-	struct btrfs_path *path;
+-
+-	path = btrfs_alloc_path();
+-	if (!path)
+-		return -ENOMEM;
+-
+-	ret = btrfs_find_item(root, path, BTRFS_ORPHAN_OBJECTID,
++	ret = btrfs_find_item(root, NULL, BTRFS_ORPHAN_OBJECTID,
+ 			offset, BTRFS_ORPHAN_ITEM_KEY, NULL);
+ 	if (ret > 0)
+ 		ret = btrfs_insert_orphan_item(trans, root, offset);
+-
+-	btrfs_free_path(path);
+-
+ 	return ret;
+ }
+ 
