@@ -35,17 +35,17 @@ index 0000000..79002a9
 +	])
 +])
 diff --git a/config/kernel.m4 b/config/kernel.m4
-index ce10707..de04478 100644
+index aeb3e64..79b7589 100644
 --- a/config/kernel.m4
 +++ b/config/kernel.m4
-@@ -96,6 +96,7 @@ AC_DEFUN([ZFS_AC_CONFIG_KERNEL], [
- 	ZFS_AC_KERNEL_5ARG_SGET
- 	ZFS_AC_KERNEL_LSEEK_EXECUTE
- 	ZFS_AC_KERNEL_VFS_ITERATE
-+	ZFS_AC_KERNEL_FOPS
- 
- 	AS_IF([test "$LINUX_OBJ" != "$LINUX"], [
- 		KERNELMAKE_PARAMS="$KERNELMAKE_PARAMS O=$LINUX_OBJ"
+@@ -19,6 +19,7 @@ AC_DEFUN([ZFS_AC_CONFIG_KERNEL], [
+ 	ZFS_AC_KERNEL_BDEV_LOGICAL_BLOCK_SIZE
+ 	ZFS_AC_KERNEL_BDEV_PHYSICAL_BLOCK_SIZE
+ 	ZFS_AC_KERNEL_BIO_BVEC_ITER
++       ZFS_AC_KERNEL_FOPS
+ 	ZFS_AC_KERNEL_BIO_FAILFAST_DTD
+ 	ZFS_AC_KERNEL_REQ_FAILFAST_MASK
+ 	ZFS_AC_KERNEL_BIO_END_IO_T_ARGS
 diff --git a/module/zfs/zpl_file.c b/module/zfs/zpl_file.c
 index 66db113..74bed5a 100644
 --- a/module/zfs/zpl_file.c

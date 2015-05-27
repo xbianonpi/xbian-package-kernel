@@ -19,11 +19,12 @@ if [ -d .uboot ]; then
         git clean -dfx  >/dev/null 2>&1
         git fetch
         git reset --hard origin/imx6
+        git revert -n --no-edit 144b1e90d15f3a94f0c8183827d4f1b93f6f2e68
     else
         needcompile=no
     fi
 else
-    git clone -b imx6 --depth=1 --single-branch git://github.com/SolidRun/u-boot-imx6 .uboot
+    git clone -b imx6 --single-branch git://github.com/SolidRun/u-boot-imx6 .uboot
     cd .uboot
 fi
 

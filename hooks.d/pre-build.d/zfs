@@ -10,33 +10,38 @@ set -e
 
 for rr in .zfs .spl; do
 
+    gitbranch=
     case $rr in
         '.zfs')
             giturl='git://github.com/zfsonlinux/zfs.git'
+            #gitbranch=
             ;;
         '.spl')
             giturl='git://github.com/zfsonlinux/spl.git'
             ;;
     esac
 
+    [ -n "$gitbranch" ] || gitbranch=master
+
     if [ -d $rr ]; then
         ( cd $rr
 
+        [ $rr = .zfs ] && zdb=
+
         shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
-        sharem=$(git ls-remote -h "$giturl" master | awk '{print $1}')
+        sharem=$(git ls-remote -h "$giturl" "$gitbranch" | awk '{print $1}')
 
         if [ $sharem != $shaloc ]; then
-            touch .force.recompile
-            git clean -dfx  >/dev/null 2>&1
-            git fetch
-            git reset --hard origin/master
+            git status | grep -q 'nothing to commit' || git commit -a -m "$(date)" >/dev/null 2>&1 || :
+            git pull | grep -q 'Already up\-to\-date' || touch .force.recompile
         fi
 
         ### until 4.1 support is merged
-        [ $rr = ".zfs" ] && { patch -p1 --dry-run < ../../../../extra-files/zfs.41.kernel.patch > /dev/null 2>&1 && patch -p1 < ../../../../extra-files/zfs.41.kernel.patch && ./autogen.sh; } || :
+        [ $rr = ".zfs" ] && { patch -p1 --dry-run < ../../../../extra-files/zfs.41.kernel.patch > /dev/null 2>&1 && patch -p1 < ../../../../extra-files/zfs.41.kernel.patch \
+             && git add config/kernel-fops-iter.m4 && ./autogen.sh; } || :
         )
     else
-        git clone -b master --depth=1 --single-branch "$giturl" $rr
+        git clone -b "$gitbranch" --depth=1 --single-branch "$giturl" $rr
 	if [ $rr = ".zfs" ]; then
 		cd .zfs
 		### NFS patch doesn't merge anymore

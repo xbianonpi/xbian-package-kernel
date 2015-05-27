@@ -2,14 +2,12 @@
 
 KVER=__KVER__
 
+[ ! -e /lib/modules/$KVER/build ] || rm -f /lib/modules/$KVER/build
+
 if [ $1 = "remove" -o $1 = purge ]; then
 
     [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
     [ -e /boot/boot.scr.txt ] && cp /boot/boot.scr.txt /boot/boot.scr.txt.xbian || :
-
-elif [ $1 = "upgrade" ]; then
-
-    [ ! -e /lib/modules/$KVER/build ] || rm -f /lib/modules/$KVER/build
 
 fi
 

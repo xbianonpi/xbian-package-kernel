@@ -1,7 +1,8 @@
 #!/bin/bash
 
-
 KVER=__KVER__
+
+[ ! -e /lib/modules/$KVER/build ] || rm -f /lib/modules/$KVER/build
 
 if [ $1 == "remove" -o $1 = upgrade ]; then
 

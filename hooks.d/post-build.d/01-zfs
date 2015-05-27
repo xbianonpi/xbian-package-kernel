@@ -40,60 +40,6 @@ if [ -d .zfs -a -d .spl ]; then
 		eval $config_build_env ./configure $extraprm --with-gnu-ld --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) --with-spl=$(readlink -f ../.spl) --build=$(uname -m)
 	fi
 
-	if [ $d = .zfs ]; then
-		tmpfile=$(mktemp)
-cat<<EOF>$tmpfile
-diff --git a/module/zfs/zpl_file.c b/module/zfs/zpl_file.c
-index 1f4f219..1d30730 100644
---- a/module/zfs/zpl_file.c
-+++ b/module/zfs/zpl_file.c
-@@ -28,6 +28,7 @@
- #include <sys/zfs_vnops.h>
- #include <sys/zfs_znode.h>
- #include <sys/zpl.h>
-+#include <linux/version.h>
- 
- 
- static int
-@@ -617,7 +618,11 @@ zpl_fallocate(struct file *filp, int mode, loff_t offset, loff_t len)
- static int
- zpl_ioctl_getflags(struct file *filp, void __user *arg)
- {
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0)
-+	struct inode *ip = filp->f_path.dentry->d_inode;
-+#else
- 	struct inode *ip = filp->f_dentry->d_inode;
-+#endif
- 	unsigned int ioctl_flags = 0;
- 	uint64_t zfs_flags = ITOZ(ip)->z_pflags;
- 	int error;
-@@ -653,7 +658,11 @@ zpl_ioctl_getflags(struct file *filp, void __user *arg)
- static int
- zpl_ioctl_setflags(struct file *filp, void __user *arg)
- {
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0)
-+	struct inode *ip = filp->f_path.dentry->d_inode;
-+#else
- 	struct inode	*ip = filp->f_dentry->d_inode;
-+#endif
- 	uint64_t	zfs_flags = ITOZ(ip)->z_pflags;
- 	unsigned int	ioctl_flags;
- 	cred_t		*cr = CRED();
-EOF
-		! patch -p1 --dry-run < $tmpfile >/dev/null || patch -p1 < $tmpfile
-		rm -f $tmpfile
-
-		### tmp fix for 3.19 until new BDI structure is reflected in code
-		case $(cat ../include/config/kernel.release) in
-			3.19*|4.0*)
-				! grep -q '#define HAVE_BDI 1' ./zfs_config.h || \
-					sed -i 's%#define HAVE_BDI 1%#undef HAVE_BDI%' ./zfs_config.h
-				;;
-			*)
-				;;
-		esac
-	fi
-
 	cd module
 	echo ...running make
 	eval $config_build_env make
