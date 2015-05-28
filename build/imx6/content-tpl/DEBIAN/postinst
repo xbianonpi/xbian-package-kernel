@@ -49,14 +49,15 @@ if [ $1 == "configure" ]; then
 
                 ### keep customcmdline from previous conf
                 ccl=$(grep 'setenv customcmdline' /boot/boot.scr.txt.user)
-                echo $ccl | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
-                echo $ccl | grep -q 'mxc_hdmi.enable_3d' || ccl="$ccl mxc_hdmi.enable_3d=enable"
-                echo $ccl | grep -q 'vpu352=' || ccl="$ccl vpu352=0"
-                ###echo $ccl | grep -q 'cma=' || ccl="$ccl cma=256M"
-                [ -z "$ccl" ] || sed -i "s%setenv customcmdline.*%$ccl%" /boot/boot.scr.txt
 
                 rm -f /boot/boot.scr.txt.user
             fi
+
+            echo "$ccl" | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
+            echo "$ccl" | grep -q 'mxc_hdmi.enable_3d' || ccl="$ccl mxc_hdmi.enable_3d=enable"
+            echo "$ccl" | grep -q 'vpu352=' || ccl="$ccl vpu352=0"
+            [ -z "$ccl" ] || sed -i "s%setenv customcmdline.*%$ccl%" /boot/boot.scr.txt
+
             [ ! -e /boot/boot.scr.txt.xbian ] || rm -f /boot/boot.scr.txt.xbian
             cd /boot; ./mks
 
