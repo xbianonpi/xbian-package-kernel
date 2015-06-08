@@ -1,5 +1,5 @@
 config_source_configure=
-config_build_env=CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm
+config_build_env=CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm
 config_source_branch=imx6-4.1.y
 config_source_addr=git://github.com/xbianonpi/xbian-sources-kernel.git
 config_deb_pkgname=linux-image-armmp

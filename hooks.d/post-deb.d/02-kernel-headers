@@ -21,9 +21,10 @@ echo "... running make clean"
 ( cd $DESTHEAD; make ARCH=$ARCH clean; make ARCH=$ARCH archclean; ) >/dev/null 2>&1
 echo "... done"
 
+kvr=${kver%%~*}
+
 case $config_platform_branch in
     imx6*)
-        kvr=${kver%%~*}
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-headers-armmp
@@ -50,8 +51,8 @@ Essential: No
 Priority: optional
 Architecture: armhf
 Depends: libc6-dev, make, gcc, linux-image-${kver%+}-armmp (= $dver)
-Provides: linux-headers, linux-headers-${kver%+}
-Conflicts: linux-headers, linux-headers-${kver%+}
+Provides: linux-headers, linux-headers-${kvr%+}
+Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
 Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
@@ -67,8 +68,8 @@ Essential: No
 Priority: optional
 Architecture: armhf
 Depends: libc6-dev, make, gcc, xbian-package-kernel (= $dver)
-Provides: linux-headers, linux-headers-$kver
-Conflicts: linux-headers, linux-headers-$kver
+Provides: linux-headers, linux-headers-${kvr%+}
+Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
 Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
@@ -84,8 +85,8 @@ Essential: No
 Priority: optional
 Architecture: armhf
 Depends: libc6-dev, make, gcc, linux-image-bcm2836 (= $dver)
-Provides: linux-headers, linux-headers-$kver
-Conflicts: linux-headers, linux-headers-$kver
+Provides: linux-headers, linux-headers-${kvr%+}
+Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
 Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
@@ -101,8 +102,8 @@ Essential: No
 Priority: optional
 Architecture: armhf
 Depends: libc6-dev, make, gcc, xbian-package-kernel (= $dver)
-Provides: linux-headers, linux-headers-$kver
-Conflicts: linux-headers, linux-headers-$kver
+Provides: linux-headers, linux-headers-${kvr%+}
+Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
 Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
@@ -111,6 +112,8 @@ EOF
     *)
         ;;
 esac
+
+kver=$(echo $kver | tr '~' '-')
 
 cat<<EOF>$DEST/DEBIAN/postinst
 #!/bin/bash

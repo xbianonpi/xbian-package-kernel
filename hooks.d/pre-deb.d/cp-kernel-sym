@@ -2,6 +2,7 @@
 
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 dver=$(cat ../build/$config_platform_branch/config | grep config_deb_version | awk -F'=' '{print $2}')
+kver=$(echo $kver | tr '~' '-')
 
 case $config_platform_branch in
     imx6*|rk*|bpi*)

@@ -87,8 +87,12 @@ EOF
         ;;
 esac
 
+kver=$(echo $kver | tr '~' '-')
+
 cat<<EOF>$DEST/DEBIAN/postinst
 #!/bin/bash
+
+kver=$kver
 
 if [ \$1 = "configure" ]; then
 

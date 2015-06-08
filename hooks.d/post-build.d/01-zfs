@@ -30,14 +30,13 @@ if [ -d .zfs -a -d .spl ]; then
 	( export $config_build_env 2>/dev/null; ) && export $config_build_env || :
 
 	extraprm=''
-	[ -z "$CROSS_COMPILE" ] || extraprm="--host=${CROSS_COMPILE%-} --target=${CROSS_COMPILE%-}"
-
+	[ -z "$CROSS_COMPILE" ] || extraprm=" --target=${CROSS_COMPILE%-} "
 	if [ $runconfigure -eq 1 ]; then
 		echo ...running configure
 
 		#### tmp fix for cross build
 		sed -i 's/as_fn_error $? "cannot run test program while cross compiling/echo $? "cannot run test program while cross compiling/g' ./configure
-		eval $config_build_env ./configure $extraprm --with-gnu-ld --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) --with-spl=$(readlink -f ../.spl) --build=$(uname -m)
+		eval $config_build_env ./configure $extraprm --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) --with-spl=$(readlink -f ../.spl)
 	fi
 
 	cd module
