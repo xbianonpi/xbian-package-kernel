@@ -13,3 +13,7 @@ esac
 
 mkdir -p $tgt
 cp ../build/$config_platform_branch/working/arch/arm/boot/dts/*.dtb $tgt || :
+
+[ -d $tgt/overlays ] || return 0
+mkdir -p $tgt/overlays
+cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/*.dtb $tgt/overlays || :
