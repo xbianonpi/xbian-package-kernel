@@ -1,6 +1,7 @@
 #!/bin/bash
 
 KVER="__KVER__"
+KVER=$(echo $KVER | tr '~' '-')
 export KVER
 
 if [ $1 == "configure" ]; then
@@ -40,6 +41,8 @@ if [ $1 == "configure" ]; then
                     ;;
             esac
             sed -i "s%setenv fstype.*%setenv fstype $fstype%" /boot/boot.scr.txt
+
+            ccl="setenv customcmdline"
 
             [ -n "$rr" ] && sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
             if [ -e /boot/boot.scr.txt.user ]; then

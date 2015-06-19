@@ -1,6 +1,7 @@
 #!/bin/bash
 
 KVER=__KVER__
+KVER=$(echo $KVER | tr '~' '-')
 
 [ ! -e /lib/modules/$KVER/build ] || rm -f /lib/modules/$KVER/build
 
