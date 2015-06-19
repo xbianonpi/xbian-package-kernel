@@ -10,6 +10,9 @@ if [ $1 == "configure" ]; then
         mv /boot-new/kernel.img-$KVER /boot/kernel.img
         mv /boot-new/System.map-$KVER /boot/
         cp /boot/System.map-$KVER /boot/System.map
+        [ -e /boot/overlays ] && rm -fr /boot/overlays
+        mv /boot-new/*.dtb /boot/ > /dev/null 2>&1
+        mv /boot-new/overlays /boot/ > /dev/null 2>&1
         rm -r /boot-new
         depmod -a $KVER
 
