@@ -28,6 +28,11 @@ for rr in .zfs .spl; do
 
         [ $rr = .zfs ] && zdb=
 
+        if [ $rr = ".zfs" -a "0$(git log -- config/kernel-fops-iter.m4 | grep -c commit)" -eq 1 ]; then
+            git revert --no-edit "$(git log -- config/kernel-fops-iter.m4 | grep commit | awk '{print $2}')"
+            git clean -xdf; git reset --hard
+        fi
+
         shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
         sharem=$(git ls-remote -h "$giturl" "$gitbranch" | awk '{print $1}')
 
@@ -36,9 +41,6 @@ for rr in .zfs .spl; do
             git pull | grep -q 'Already up\-to\-date' || touch .force.recompile
         fi
 
-        ### until 4.1 support is merged
-        [ $rr = ".zfs" ] && { patch -p1 --dry-run < ../../../../extra-files/zfs.41.kernel.patch > /dev/null 2>&1 && patch -p1 < ../../../../extra-files/zfs.41.kernel.patch \
-             && git add config/kernel-fops-iter.m4 && ./autogen.sh; } || :
         )
     else
         git clone -b "$gitbranch" --depth=1 --single-branch "$giturl" $rr
