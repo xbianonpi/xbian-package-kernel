@@ -3,7 +3,7 @@
 KVER=__KVER__
 KVER=$(echo $KVER | tr '~' '-')
 
-[ ! -e /lib/modules/$KVER/build ] || rm -f /lib/modules/$KVER/build
+[ ! -h /lib/modules/$KVER/build ] || rm -f /lib/modules/$KVER/build
 
 if [ $1 = "remove" -o $1 = purge ]; then
 
