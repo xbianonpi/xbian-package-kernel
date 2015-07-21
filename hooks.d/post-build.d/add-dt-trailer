@@ -1,0 +1,12 @@
+case $config_platform_branch in
+    rpi*)
+        if [ -x ./scripts/mkknlimg ]; then
+           ./scripts/mkknlimg --dtok ./arch/arm/boot/zImage ./arch/arm/boot/zImage.dt
+           mv ./arch/arm/boot/zImage.dt ./arch/arm/boot/zImage
+        else
+            echo "Warning: can not add DT-trailer to kernel image"
+        fi
+        ;;
+    *)
+        ;;
+esac

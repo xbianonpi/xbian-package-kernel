@@ -48,9 +48,6 @@ for rr in .zfs .spl; do
 		cd .zfs
 		### NFS patch doesn't merge anymore
 		#patch -p1 < ../../../../extra-files/0001-Fixes-for-accessing-snapshots-over-NFS.patch
-
-		### until 4.1 support is merged
-		patch -p1 < ../../../../extra-files/zfs.41.kernel.patch
 		cd ..
 	fi
     fi

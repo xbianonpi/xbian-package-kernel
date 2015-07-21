@@ -11,13 +11,7 @@ case $config_platform_branch in
         ;;
     rpi*)
         cp ../build/$config_platform_branch/working/System.map ./boot-new/System.map-$kver
-        #cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot-new/kernel.img-$kver
-        if [ -x ../build/$config_platform_branch/working/scripts/mkknlimg ]; then
-           ../build/$config_platform_branch/working/scripts/mkknlimg --dtok ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot-new/kernel.img-$kver
-        else
-            echo "Warning: can not add DT-trailer to kernel image"
-            cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot-new/kernel.img-$kver
-        fi
+        cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot-new/kernel.img-$kver
         ;;
     *)
         ;;
