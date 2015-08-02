@@ -17,4 +17,4 @@ cp ../build/$config_platform_branch/working/arch/arm/boot/dts/*.dtb $tgt || :
 [ -d ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays ] || return 0
 mkdir -p $tgt/overlays
 cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/*.dtb $tgt/overlays || :
-cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/README $tgt/overlays || :
+cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/README $tgt/README.overlays || :
