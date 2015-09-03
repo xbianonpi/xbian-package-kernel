@@ -29,11 +29,11 @@ cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-headers-armmp
 Version: $dver
-Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: libc6-dev, make, gcc, linux-image-armmp (= $dver)
+Multi-Arch: same
+Section: devel
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
@@ -50,6 +50,8 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
+Section: devel
+Multi-Arch: same
 Depends: libc6-dev, make, gcc, linux-image-${kver%+}-armmp (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
@@ -188,6 +190,9 @@ mv $DESTHEAD/usr/include $DEST/usr
 rm -fr $DEST/usr/src
 rm -f $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN/postrm
 
+mkdir -p $DEST/usr/include/arm-linux-gnueabihf
+mv $DEST/usr/include/asm $DEST/usr/include/arm-linux-gnueabihf
+
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-libc-dev
@@ -196,6 +201,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
+Multi-Arch: same
 Maintainer: mk01 <development@xbian.org>
 Description: Linux support headers for userspace development ($kver)
 EOF
