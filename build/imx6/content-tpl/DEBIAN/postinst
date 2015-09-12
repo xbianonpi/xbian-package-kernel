@@ -4,7 +4,7 @@ KVER="__KVER__"
 KVER=$(echo $KVER | tr '~' '-')
 export KVER
 
-[ -e /lib/libarmmem.so ] && { grep -q 'libarmmem.so' /etc/ld.so.preload || echo '/lib/libarmmem.so' >> /etc/ld.so.preload; }
+[ -e /lib/libarmmem.so ] && { grep -q 'libarmmem.so' /etc/ld.so.preload 2>/dev/null|| echo '/lib/libarmmem.so' >> /etc/ld.so.preload; }
 if [ "$(stat -c %d:%i /)" != "$(stat -c %d:%i /proc/1/root/. 2>/dev/null)" ]; then
         [ -e /etc/ld.so.preload ] && mv /etc/ld.so.preload /etc/ld.so.preload.chroot || :
 fi
