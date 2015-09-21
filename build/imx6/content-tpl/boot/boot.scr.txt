@@ -2,6 +2,7 @@ if test ${failedboot} != ""; then
     setenv fprefix fail/
 else
     setenv failedboot yes
+    setenv fprefix
     saveenv
 fi
 
