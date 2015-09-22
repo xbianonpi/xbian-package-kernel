@@ -2,4 +2,5 @@
 make kernelversion
 kver="$(cat include/config/kernel.release | tr '-' '~')"
 
+[ -e ../config_pkgver ] || echo "config_deb_version=" > ../config_pkgver
 sed -i "s%config_deb_version=.*%config_deb_version=$kver%g" ../config_pkgver
