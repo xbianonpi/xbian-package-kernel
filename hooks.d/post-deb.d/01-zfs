@@ -1,4 +1,4 @@
-[ -d .zfs -a -d .spl ] || return 0
+[ -d .zfs -a -d .spl ] || exit 0
 
 DEST=$(readlink -f ../../../content/)
 ARCH=arm

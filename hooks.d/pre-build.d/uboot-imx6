@@ -3,7 +3,7 @@ case $config_platform_branch in
     imx6*)
         ;;
     *)
-        return 0
+        exit 0
         ;;
 esac
 
@@ -34,7 +34,7 @@ fi
 . $(dirname $0)/0-patch-uboot-btrfs.variant2
 )
 
-[ $needcompile = yes -o -e .needcompile ] || return 0
+[ $needcompile = yes -o -e .needcompile ] || exit 0
 
 echo "BUILDING U-BOOT... Please wait"
 

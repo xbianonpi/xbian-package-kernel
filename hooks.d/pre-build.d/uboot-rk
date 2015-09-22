@@ -3,7 +3,7 @@ case $config_platform_branch in
     rk*)
         ;;
     *)
-        return 0
+        exit 0
         ;;
 esac
 
@@ -32,7 +32,7 @@ fi
 . $(dirname $0)/1-patch-uboot-btrfs-patch.variant2
 )
 
-[ $needcompile = yes -o .needcompile ] || return 0
+[ $needcompile = yes -o .needcompile ] || exit 0
 
 echo "BUILDING U-BOOT... Please wait"
 

@@ -7,14 +7,14 @@ case $config_platform_branch in
         tgt='./boot-new'
         ;;
     *)
-        return 0
+        exit 0
         ;;
 esac
 
 mkdir -p $tgt
 cp ../build/$config_platform_branch/working/arch/arm/boot/dts/*.dtb $tgt || :
 
-[ -d ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays ] || return 0
+[ -d ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays ] || exit 0
 mkdir -p $tgt/overlays
 cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/*.dtb $tgt/overlays || :
 cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/README $tgt/README.overlays || :
