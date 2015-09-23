@@ -11,9 +11,9 @@ DESTHEAD=$(echo $DEST/usr/src/linux-headers-$kver | tr '~' '-')
 echo "... cleaning tmp dir"
 ( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; mkdir -p $DESTHEAD; )
 echo "... copying make/kconfig files"
-find ./ -iname Kconfig\* -o -iname Makefile\* -o -iname Kbuild\* -o -iname config | grep -v '\.uboot\|\.git\|\.zfs\|\.spl' | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
+find ./ -iname Kconfig\* -o -iname Makefile\* -o -iname Kbuild\* -o -iname config | grep -v '\.uboot\|\.git\|\.zfs\|\.spl' | xargs cp -a --parents -t $DESTHEAD 2>/dev/null || :
 echo "... copying .h files and helper scripts"
-find ./arch/$ARCH ./include ./scripts ./usr ./tools/include | xargs cp -a --parents -t $DESTHEAD 2>/dev/null
+find ./arch/$ARCH ./include ./scripts ./usr ./tools/include | xargs cp -a --parents -t $DESTHEAD 2>/dev/null || :
 cp -a -t $DESTHEAD .config Module.symvers
 ( cd $DESTHEAD/usr/include; find ./ -iname .install -o -iname ..install.cmd | xargs rm -f ; )
 
