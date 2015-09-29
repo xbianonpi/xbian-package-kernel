@@ -48,5 +48,6 @@ set +e
 
 echo "U-BOOT compiled."
 
+mkdir -p ../../content-tpl/etc/uboot-env
 cp SPL ../../content-tpl/etc/uboot-env
 cp u-boot.img ../../content-tpl/etc/uboot-env
