@@ -20,6 +20,7 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
     eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver
     eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver strip
 
+    kver=$(echo $kver | tr '~' '-')
     mkdir -p ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/
     install -p -m 644 8812au.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/)
 )
