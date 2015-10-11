@@ -17,7 +17,7 @@ if [ $1 == "configure" ]; then
         insserv -fr rng-tools &>/dev/null
         udevadm control --reload-rules || :
 
-        if [ "$(xbian-arch)" = iMX6 ]; then
+        if [ "$(/usr/local/sbin/xbian-arch)" = iMX6 ]; then
             [ ! -e /boot/mks ] || { rm -f /usr/local/sbin/mks; ln -s /boot/mks /usr/local/sbin/; :; }
 
             if [ -b /dev/mmcblk0 ]; then
