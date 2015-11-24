@@ -2,6 +2,7 @@ case $config_platform_branch in
     imx6*|rk*|bpi*|rpi2*)
         ;;
     *)
+        rm -fr .zfs .spl 2>/dev/null
         exit 0
         ;;
 esac
