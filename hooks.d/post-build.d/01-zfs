@@ -18,6 +18,10 @@ if [ -d .zfs -a -d .spl ]; then
 		./autogen.sh >/dev/null || :
 		runconfigure=1
 	fi
+	if [ -e ./Makefile ]; then
+		tdir=$(grep abs_builddir Makefile | awk -F'= ' '{print $2}')
+		[ "$tdir" = "$(pwd)" ] || make distclean
+	fi
 	if [ -e configure ]; then
 		if [ -e Makefile ]; then
 			[ "$( find ./ -maxdepth 1 -iname Makefile ! -newer ../.config | grep -c .; )" -gt 0 ] && runconfigure=1 || :
