@@ -13,14 +13,16 @@ if [ -d .zfs -a -d .spl ]; then
 	for d in .spl .zfs; do (
 	echo "BUILDING $d... Please wait" 
 	cd $d; runconfigure=0
+
+	if [ -e ./Makefile ]; then
+		tdir=$(grep abs_builddir Makefile | awk -F'= ' '{print $2}')
+		[ "$tdir" = "$(pwd)" ] || git clean -xdf ./
+	fi
+
 	if [ ! -e ./configure ]; then
 		echo ...running autogen.sh
 		./autogen.sh >/dev/null || :
 		runconfigure=1
-	fi
-	if [ -e ./Makefile ]; then
-		tdir=$(grep abs_builddir Makefile | awk -F'= ' '{print $2}')
-		[ "$tdir" = "$(pwd)" ] || make distclean
 	fi
 	if [ -e configure ]; then
 		if [ -e Makefile ]; then
