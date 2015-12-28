@@ -32,10 +32,18 @@ load mmc 0:1 ${loadaddr} ${fprefix}zImage || load mmc 0:1 ${loadaddr} zImage
 run autodetectfdt
 load mmc 0:1 ${fdt_addr} ${fprefix}${fdt_file} || load mmc 0:1 ${fdt_addr} ${fdt_file}
 
-if load mmc 0:1 0x19000000 initramfs.gz; then
-    setenv initram 0x19000000
+if test ${fprefix} != ""; then
+    if load mmc 0:1 0x19000000 ${fprefix}initramfs.gz || load mmc 0:1 0x19000000 ${fprefix}initramfs1.gz; then
+        setenv initram 0x19000000
+    else
+        setenv initram "-"
+    fi
 else
-    setenv initram "-"
+    if load mmc 0:1 0x19000000 initramfs.gz; then
+        setenv initram 0x19000000
+    else
+        setenv initram "-"
+    fi
 fi
 
 if test ${debug} != ""; then exit 1; fi
