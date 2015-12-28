@@ -4,6 +4,8 @@ KVER="__KVER__"
 KVER=$(echo $KVER | tr '~' '-')
 export KVER
 
+! test -e /etc/ld.so.preload || sed -i '/libarmmem.so/d' /etc/ld.so.preload
+
 if [ $1 == "install" -o $1 == "upgrade" ]; then
 
         mkdir -p /usr/local/sbin
