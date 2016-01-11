@@ -28,6 +28,7 @@ for rr in .zfs .spl; do
         ( cd $rr
 
         [ $rr = .zfs ] && zdb=
+        [ $rr = .zfs ] && git fetch && git reset --hard 9867e8be2a7182ce9b5eb28ed1d142e2ee60d69d && touch .force.recompile && continue
 
         if [ $rr = ".zfs" -a "0$(git log -- config/kernel-fops-iter.m4 | grep -c commit)" -eq 1 ]; then
             git revert --no-edit "$(git log -- config/kernel-fops-iter.m4 | grep commit | awk '{print $2}')"
