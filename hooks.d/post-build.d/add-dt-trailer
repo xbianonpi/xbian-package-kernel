@@ -1,8 +1,10 @@
 case $config_platform_branch in
     rpi*)
         if [ -x ./scripts/mkknlimg ]; then
-           ./scripts/mkknlimg --dtok ./arch/arm/boot/zImage ./arch/arm/boot/zImage.dt
-           mv ./arch/arm/boot/zImage.dt ./arch/arm/boot/zImage
+           if ! grep -q 'DTOKLinux version' ./arch/arm/boot/zImage; then
+              ./scripts/mkknlimg --dtok ./arch/arm/boot/zImage ./arch/arm/boot/zImage.dt
+              mv ./arch/arm/boot/zImage.dt ./arch/arm/boot/zImage
+           fi
         else
             echo "Warning: can not add DT-trailer to kernel image"
         fi
