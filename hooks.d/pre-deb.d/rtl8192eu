@@ -1,0 +1,27 @@
+
+dest='.rtl8192eu'
+repo='https://github.com/Mange/rtl8192eu-linux-driver.git'
+kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+(
+    cd ../build/$config_platform_branch/working
+
+    if test -d $dest; then
+        cd $dest
+        git reset --hard
+        git pull
+    else
+        git clone $repo $dest
+        cd $dest
+    fi
+
+    CONFIG_PLATFORM_I386_PC=n
+    CONFIG_PLATFORM_ARM_RPI=y
+
+    eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver
+    eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver strip
+
+    kver=$(echo $kver | tr '~' '-')
+    mkdir -p ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/
+    install -p -m 644 8192eu.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/)
+)
+
