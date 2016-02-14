@@ -1,0 +1,53 @@
+
+case $config_platform_branch in
+    mvebu*)
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+needcompile=yes
+
+grep -q 'github.com/xbianonpi/xbian-sources-kernel' .uboot/.git/config || rm -fr .uboot
+
+if [ -d .uboot ]; then
+    cd .uboot
+
+    shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
+    sharem=$(git ls-remote -h https://github.com/xbianonpi/xbian-sources-kernel.git uboot-clearfog | awk '{print $1}')
+
+    if [ $sharem != $shaloc ]; then
+        git clean -dfx  >/dev/null 2>&1
+        git fetch
+        git reset --hard origin/uboot-clearfog
+    else
+        needcompile=no
+    fi
+else
+    git clone -b uboot-clearfog --single-branch https://github.com/xbianonpi/xbian-sources-kernel.git .uboot
+    cd .uboot
+fi
+
+(
+. $(dirname $0)/0-patch-uboot-btrfs.variant1
+. $(dirname $0)/0-patch-uboot-btrfs.variant2
+)
+
+[ $needcompile = yes -o -e .needcompile ] || exit 0
+
+echo "BUILDING U-BOOT... Please wait"
+
+
+eval $config_build_env make armada_38x_clearfog_config >/dev/null 2>&1
+eval $config_build_env make u-boot.mmc >/dev/null 2>&1
+mv u-boot.mmc u-boot.img
+
+rm -f .needcompile
+
+set +e
+
+echo "U-BOOT compiled."
+
+mkdir -p ../../content-tpl/etc/uboot-env
+cp u-boot.img ../../content-tpl/etc/uboot-env
