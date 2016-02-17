@@ -10,7 +10,7 @@ bootenv=uEnv.txt
 bootfile=auto
 bootit=setenv boot_file ${bootfile}; if test ${boot_file} = zImage; then if test ${boot_fdt} = yes || test ${boot_fdt} = try; then if run loadfdt; then run autobootfdt; else if test ${boot_fdt} = try; then echo WARN: Cannot load the DTB and boot file is type zImage;echo if you have not appended a dtb to the file it may;echo hang after displaying Starting kernel...;echo ;run autoboot; else echo WARN: Cannot load the DT; fi; fi; else run autoboot; fi; else run autoboot; fi;
 bootscript=echo Running bootscript from mmc ...; source;
-console=ttymxc0
+console=console=ttymxc0,${baudrate}
 ethprime=FEC
 fdt_addr=0x18000000
 fdt_high=0xffffffff
