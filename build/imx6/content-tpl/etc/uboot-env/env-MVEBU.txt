@@ -1,0 +1,84 @@
+CASset=max
+MALLOC_len=5
+MPmode=SMP
+autoload=no
+baudrate=115200
+boot_order=hd_scr usb_scr mmc_scr hd_img usb_img mmc_img pxe net_img net_scr
+boot_source_device=mmc 0:1
+bootargs=console=ttyS0,115200 mtdparts=spi_flash:4m(boot),-(spi-rootfs) root=/dev/nfs rw nfsroot=10.4.50.38:/srv/nfs/ ip=10.4.50.170:10.4.50.38:10.4.50.254:255.255.255.0:Armada38x:eth0:none mv_net_config=4,(00:50:43:11:11:11,0:1:2:3),mtu=1500 video=dovefb:lcd0:640x480-16@60 clcd.lcd0_enable=0 clcd.lcd_panel=0
+bootargs_dflt=$console $nandEcc $mtdparts_lgcy $bootargs_root nfsroot=$serverip:$rootpath ip=$ipaddr:$serverip$bootargs_end $mvNetConfig video=dovefb:lcd0:$lcd0_params clcd.lcd0_enable=$lcd0_enable clcd.lcd_panel=$lcd_panel
+bootargs_end=:10.4.50.254:255.255.255.0:Armada38x:eth0:none
+bootargs_root=root=/dev/nfs rw
+bootcmd=stage_boot $boot_order
+bootcmd_auto=stage_boot $boot_order
+bootcmd_fdt=tftpboot 0x2000000 $image_name;tftpboot $fdtaddr $fdtfile;setenv bootargs $console $nandEcc $mtdparts $bootargs_root nfsroot=$serverip:$rootpath ip=$ipaddr:$serverip$bootargs_end $mvNetConfig video=dovefb:lcd0:$lcd0_params clcd.lcd0_enable=$lcd0_enable clcd.lcd_panel=$lcd_panel; bootz 0x2000000 - $fdtaddr;
+bootcmd_fdt_boot=tftpboot 0x2000000 $image_name; setenv bootargs $console $nandEcc $mtdparts $bootargs_root nfsroot=$serverip:$rootpath ip=$ipaddr:$serverip$bootargs_end $mvNetConfig video=dovefb:lcd0:$lcd0_params clcd.lcd0_enable=$lcd0_enable clcd.lcd_panel=$lcd_panel; bootz 0x2000000 - $fdtaddr;
+bootcmd_fdt_edit=tftpboot $fdtaddr $fdtfile; fdt addr $fdtaddr; setenv bootcmd $bootcmd_fdt_boot
+bootcmd_lgcy=tftpboot 0x2000000 $image_name;setenv bootargs $console $nandEcc $mtdparts_lgcy $bootargs_root nfsroot=$serverip:$rootpath ip=$ipaddr:$serverip$bootargs_end  video=dovefb:lcd0:$lcd0_params clcd.lcd0_enable=$lcd0_enable clcd.lcd_panel=$lcd_panel;  bootm $loadaddr; 
+bootdelay=3
+cacheShare=no
+console=console=ttyS0,115200
+device_partition=0:1
+disaMvPnp=no
+eeeEnable=no
+enaClockGating=no
+enaCpuStream=no
+enaFPU=yes
+enaMonExt=no
+enaWrAllo=no
+env=fdt_skip_update yes
+eth1addr=00:50:43:00:fa:02
+eth1mtu=1500
+eth2addr=00:50:43:00:67:02
+eth2mtu=1500
+eth3addr=00:50:43:fa:67:00
+eth3mtu=1500
+ethact=egiga0
+ethaddr=00:50:43:67:fa:02
+ethmtu=1500
+ethprime=egiga0
+fdt_addr=2040000
+fdt_skip_update=yes
+fdtaddr=0x1000000
+fdtfile=armada-38x.dtb
+filesize=0x749
+fprefix=/boot/
+ide_path=/
+image_name=uImage
+initrd_name=uInitrd
+ipaddr=10.4.50.170
+kernel_addr_r=2080000
+lcd0_enable=0
+lcd0_params=640x480-16@60
+lcd_panel=0
+limit_dram_size=yes
+loadaddr=0x02000000
+loads_echo=0
+mtdids=spi0=spi_flash
+mtdparts=mtdparts=spi0.0:4m(boot),-(spi-rootfs)
+mtdparts_lgcy=mtdparts=spi_flash:4m(boot),-(spi-rootfs)
+mvNetConfig=mv_net_config=4,(00:50:43:11:11:11,0:1:2:3),mtu=1500
+mv_pon_addr=00:50:43:02:67:00
+netbsd_en=no
+netmask=255.255.255.0
+netretry=no
+pcieTune=no
+pexMode=RC
+pxe_files_load=:default.arm-armadaxp-db:default.arm-armadaxp:default.arm
+pxefile_addr_r=3100000
+ramdisk_addr_r=2880000
+rootpath=/srv/nfs/
+sata_delay_reset=0
+sata_dma_mode=yes
+script_addr_r=3000000
+script_name=boot.scr
+serverip=10.4.50.38
+standalone=fsload 0x2000000 $image_name;setenv bootargs $console $nandEcc $mtdparts_lgcy root=/dev/mtdblock0 rw ip=$ipaddr:$serverip$bootargs_end; bootm 0x2000000;
+stderr=serial
+stdin=serial
+stdout=serial
+usb0Mode=host
+usbActive=0
+usbType=2
+vxworks_en=no
+yuk_ethaddr=00:00:00:EE:51:81
