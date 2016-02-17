@@ -1,6 +1,6 @@
 
 case $config_platform_branch in
-    mvebu*)
+    mvebu*|imx6*)
         ;;
     *)
         exit 0
@@ -9,10 +9,10 @@ esac
 
 needcompile=yes
 
-grep -q 'github.com/xbianonpi/xbian-sources-kernel' .uboot/.git/config || rm -fr .uboot
+grep -q 'github.com/xbianonpi/xbian-sources-kernel' .uboot-mvebu/.git/config || rm -fr .uboot-mvebu
 
-if [ -d .uboot ]; then
-    cd .uboot
+if [ -d .uboot-mvebu ]; then
+    cd .uboot-mvebu
 
     shaloc=$(git log -n1 --format=oneline | awk '{print $1}')
     sharem=$(git ls-remote -h https://github.com/xbianonpi/xbian-sources-kernel.git uboot-clearfog | awk '{print $1}')
@@ -25,8 +25,8 @@ if [ -d .uboot ]; then
         needcompile=no
     fi
 else
-    git clone -b uboot-clearfog --single-branch https://github.com/xbianonpi/xbian-sources-kernel.git .uboot
-    cd .uboot
+    git clone -b uboot-clearfog --single-branch https://github.com/xbianonpi/xbian-sources-kernel.git .uboot-mvebu
+    cd .uboot-mvebu
 fi
 
 (
@@ -41,7 +41,6 @@ echo "BUILDING U-BOOT... Please wait"
 
 eval $config_build_env make armada_38x_clearfog_config >/dev/null 2>&1
 eval $config_build_env make u-boot.mmc >/dev/null 2>&1
-mv u-boot.mmc u-boot.img
 
 rm -f .needcompile
 
@@ -50,4 +49,4 @@ set +e
 echo "U-BOOT compiled."
 
 mkdir -p ../../content-tpl/etc/uboot-env
-cp u-boot.img ../../content-tpl/etc/uboot-env
+cp u-boot.mmc ../../content-tpl/etc/uboot-env/u-boot-clearfog.mmc
