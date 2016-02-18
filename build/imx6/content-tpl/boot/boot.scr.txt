@@ -39,18 +39,18 @@ fi
 
 if test ${debug} != ""; then exit 1; fi
 
-load mmc 0:1 ${loadaddr} ${fprefix}zImage || load mmc 0:1 ${loadaddr} zImage
+ext4load mmc 0:1 ${loadaddr} ${fprefix}zImage || ext4load mmc 0:1 ${loadaddr} zImage
 
-load mmc 0:1 ${fdt_addr} ${fprefix}${fdt_file} || load mmc 0:1 ${fdt_addr} ${fdt_file}
+ext4load mmc 0:1 ${fdt_addr} ${fprefix}${fdt_file} || ext4load mmc 0:1 ${fdt_addr} ${fdt_file}
 
 if test ${fprefix} != ""; then
-    if load mmc 0:1 ${ramdisk_addr_r} ${fprefix}initramfs.gz || load mmc 0:1 ${ramdisk_addr_r} ${fprefix}initramfs1.gz; then
+    if ext4load mmc 0:1 ${ramdisk_addr_r} ${fprefix}initramfs.gz || ext4load mmc 0:1 ${ramdisk_addr_r} ${fprefix}initramfs1.gz; then
         setenv initram ${ramdisk_addr_r}
     else
         setenv initram "-"
     fi
 else
-    if load mmc 0:1 ${ramdisk_addr_r} initramfs.gz; then
+    if ext4load mmc 0:1 ${ramdisk_addr_r} initramfs.gz; then
         setenv initram ${ramdisk_addr_r}
     else
         setenv initram "-"
