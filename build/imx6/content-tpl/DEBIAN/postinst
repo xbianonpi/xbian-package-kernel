@@ -3,6 +3,7 @@
 KVER="__KVER__"
 KVER=$(echo $KVER | tr '~' '-')
 export KVER
+XARCH="$(/usr/local/sbin/xbian-arch)"
 
 if [ $1 == "configure" ]; then
 
@@ -12,19 +13,33 @@ if [ $1 == "configure" ]; then
         insserv -fr rng-tools &>/dev/null
         udevadm control --reload-rules || :
 
-        if [ "$(/usr/local/sbin/xbian-arch)" = iMX6 ]; then
+        if [ $XARCH = iMX6 -o $XARCH = MVEBU ]; then
             [ ! -e /boot/mks ] || { rm -f /usr/local/sbin/mks; ln -s /boot/mks /usr/local/sbin/; :; }
 
             if [ -b /dev/mmcblk0 ]; then
                 echo "Updating u-boot"
-                dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
-                dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42 conv=fsync
+
+                case $XARCH in
+                        iMX6)
+                                dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
+                                dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42 conv=fsync
+                                ;;
+                        MVEBU)
+                                dd if=/etc/uboot-env/u-boot-clearfog.mmc of=/dev/mmcblk0 bs=512 seek=1
+                                ;;
+                        *)
+                                ;;
+                esac
+
+                sed -i "s%#$XARCH[\ ]*%%g" /etc/uboot-env.conf
+
                 if [ ! -e /boot/noenv ]; then
                     uboot-env del -i || uboot-env del -I
-                    uboot-env set < /etc/uboot-env/default.txt
+                    uboot-env set < /etc/uboot-env/env-$XARCH.txt
                     uboot-env set script boot.scr
                     uboot-env set bootdelay 2
                 fi
+
             fi
 
             [ -e /dev/root ] && rr=$(readlink -e /dev/root); [ -z "$rr" ] && rr=$(findmnt -o source / -n)
@@ -56,15 +71,19 @@ if [ $1 == "configure" ]; then
                 rm -f /boot/boot.scr.txt.user
             fi
 
-            echo "$ccl" | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
-            echo "$ccl" | grep -q 'mxc_hdmi.enable_3d' || ccl="$ccl mxc_hdmi.enable_3d=enable"
-            echo "$ccl" | grep -q 'vpu352=' || ccl="$ccl vpu352=0"
+            if [ $XARCH = iMX6 ]; then
+                    echo "$ccl" | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
+                    echo "$ccl" | grep -q 'mxc_hdmi.enable_3d' || ccl="$ccl mxc_hdmi.enable_3d=enable"
+                    echo "$ccl" | grep -q 'vpu352=' || ccl="$ccl vpu352=0"
+                    echo "$ccl" | grep -q 'overclock=' || ccl="$ccl overclock=0"
+                    update-rc.d imx6-bluetooth defaults >/dev/null 2>&1
+            fi
+
             [ -z "$ccl" ] || sed -i "s%setenv customcmdline.*%$ccl%" /boot/boot.scr.txt
 
             [ ! -e /boot/boot.scr.txt.xbian ] || rm -f /boot/boot.scr.txt.xbian
             cd /boot; ./mks
 
-            update-rc.d imx6-bluetooth defaults >/dev/null 2>&1
         fi
 
         INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
