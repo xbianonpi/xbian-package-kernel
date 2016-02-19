@@ -25,7 +25,7 @@ else
     setenv ramdisk_addr_r 0x19000000
 fi
 
-setenv baseconfig $cpus $console console=tty1 coherent_pool=2M ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 quiet loglevel=0 nohdparm splash partswap dmfc=3 pcie_aspm=off
+setenv baseconfig $cpus $console console=tty1 coherent_pool=2M ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 quiet loglevel=0 nohdparm splash partswap dmfc=3 pcie_aspm=off pci=nomsi
 
 if test ${autodetectfdt} != ""; then
     run autodetectfdt
