@@ -1,0 +1,26 @@
+
+dest='.mt76x0u'
+module='./os/linux/mt7650u_sta.ko'
+#repo='https://sanrath@bitbucket.org/sanrath/mediatek_mt7610u_sta_driver_linux-64bit.git'
+repo='https://github.com/Myria-de/mt7610u_wifi_sta_v3002_dpo_20130916'
+kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+(
+    cd ../build/$config_platform_branch/working
+
+    if test -d $dest; then
+        cd $dest
+        git reset --hard
+        git pull
+    else
+        git clone $repo $dest
+        cd $dest
+    fi
+
+    eval $config_build_env make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm LINUX_SRC=$(readlink -f ../) KVER=$kver
+    eval $config_build_env strip --strip-debug $module
+
+    kver=$(echo $kver | tr '~' '-')
+    mkdir -p ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/
+    install -p -m 644 $module $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/)
+)
+
