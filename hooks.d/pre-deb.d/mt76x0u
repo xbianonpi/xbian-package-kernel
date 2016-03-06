@@ -30,6 +30,5 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
 
     mkdir  -p ../../../../content/etc/Wireless/RT2870STA/
     cp -a conf/RT2870STA.dat ../../../../content/etc/Wireless/RT2870STA/
-    exit 1
 )
 
