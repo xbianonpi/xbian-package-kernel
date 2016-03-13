@@ -1,6 +1,7 @@
 
 dest='.rtl8812au'
-repo='https://github.com/gnab/rtl8812au.git'
+#repo='https://github.com/gnab/rtl8812au.git'
+repo='https://github.com/abperiasamy/rtl8812AU_8821AU_linux'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
     cd ../build/$config_platform_branch/working
