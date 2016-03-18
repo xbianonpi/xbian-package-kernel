@@ -1,6 +1,6 @@
 
 case $config_platform_branch in
-    imx6*)
+    imx6*|cb2*)
         tgt='./boot'
         ;;
     rpi*|rpi2*)
@@ -16,5 +16,5 @@ cp ../build/$config_platform_branch/working/arch/arm/boot/dts/*.dtb $tgt || :
 
 [ -d ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays ] || exit 0
 mkdir -p $tgt/overlays
-cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/*.dtb $tgt/overlays || :
+cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/*.dtb* $tgt/overlays || :
 cp ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays/README $tgt/README.overlays || :
