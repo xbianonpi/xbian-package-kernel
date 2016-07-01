@@ -18,6 +18,7 @@ if [ $1 == "configure" ]; then
         [ -e /boot/overlays ] && rm -fr /boot/overlays
         mv /boot-new/*.dtb /boot/ > /dev/null 2>&1
         mv /boot-new/overlays /boot/ > /dev/null 2>&1
+        [ -e /boot-new/README.overlays ] && mv /boot-new/README.overlays /boot/ > /dev/null 2>&1
         rm -r /boot-new
         depmod -a $KVER
 
