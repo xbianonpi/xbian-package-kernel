@@ -1,4 +1,7 @@
 case $config_platform_branch in
+    imx6-4.6.y)
+	exit 0
+	;;
     imx6*|bpi*|rk*|rpi2*)
 	;;
     *)
