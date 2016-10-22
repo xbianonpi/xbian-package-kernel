@@ -25,7 +25,7 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
 
     kver=$(echo $kver | tr '~' '-')
     mkdir -p ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/
-    [ -e 8812au.ko ] && install -p -m 644 8812au.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/)
-    [ -e rtl8812au.ko ] && install -p -m 644 rtl8812au.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/)
+    [ -e 8812au.ko ] && install -p -m 644 8812au.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/) || :
+    [ -e rtl8812au.ko ] && install -p -m 644 rtl8812au.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/) || :
 )
 
