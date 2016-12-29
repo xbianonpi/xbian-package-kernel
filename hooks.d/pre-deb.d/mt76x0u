@@ -1,10 +1,8 @@
 
 dest='.mt76x0u'
 module='./os/linux/mt7610u_sta.ko'
-#repo='https://sanrath@bitbucket.org/sanrath/mediatek_mt7610u_sta_driver_linux-64bit.git'
-#repo='https://github.com/Myria-de/mt7610u_wifi_sta_v3002_dpo_20130916'
-#repo='https://github.com/chenhaiq/mt7610u_wifi_sta_v3002_dpo_20130916'
-repo='https://github.com/xtknight/mt7610u-linksys-ae6000-wifi-fixes'
+#repo='https://github.com/xtknight/mt7610u-linksys-ae6000-wifi-fixes'
+repo='https://github.com/mkreisl/mt7610u-linksys-ae6000-wifi-fixes'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
     cd ../build/$config_platform_branch/working
