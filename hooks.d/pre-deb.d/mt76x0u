@@ -16,6 +16,60 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
         cd $dest
     fi
 
+    rm -f include/rtw_compat.h
+    echo "--- a/include/cfg80211.h
++++ b/include/cfg80211.h
+@@ -28,6 +28,7 @@
+ #ifdef RT_CFG80211_SUPPORT
+ 
+ #include <linux/ieee80211.h>
++#include \"rtw_compat.h\"
+ 
+ typedef struct __CFG80211_CB {
+ 
+--- /dev/null
++++ b/include/rtw_compat.h
+@@ -0,0 +1,38 @@
++/*
++ * Author: Chen Minqiang <ptpt52@gmail.com>
++ *  Date : Mon, 03 Oct 2016 23:17:42 +0800
++ */
++#ifndef _RTW_COMPAT_H_
++#define _RTW_COMPAT_H_
++
++#include <linux/version.h>
++
++#ifdef CONFIG_COMPAT
++#ifdef in_compat_syscall
++	#define rtw_is_compat_task in_compat_syscall
++#else
++	#define rtw_is_compat_task is_compat_task
++#endif
++#endif
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)
++#else
++#define ieee80211_band nl80211_band
++#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ
++#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ
++#define IEEE80211_BAND_60GHZ NL80211_BAND_60GHZ
++#define IEEE80211_NUM_BANDS NUM_NL80211_BANDS
++#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0) */
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
++#else
++#define STATION_INFO_SIGNAL BIT(NL80211_STA_INFO_SIGNAL)
++#define STATION_INFO_TX_BITRATE BIT(NL80211_STA_INFO_TX_BITRATE)
++#define STATION_INFO_RX_PACKETS BIT(NL80211_STA_INFO_RX_PACKETS)
++#define STATION_INFO_TX_PACKETS BIT(NL80211_STA_INFO_RX_PACKETS)
++
++#define strnicmp strncasecmp
++
++#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0) */
++
++#endif /* _RTW_COMPAT_H_ */
+" | patch -p1
+
     #eval $config_build_env make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm LINUX_SRC=$(readlink -f ../) KVER=$kver clean
     eval $config_build_env make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm LINUX_SRC=$(readlink -f ../) KVER=$kver
     eval $config_build_env arm-linux-gnueabihf-strip --strip-unneeded $module
