@@ -81,6 +81,10 @@ if [ $1 == "configure" ]; then
 
             [ -z "$ccl" ] || sed -i "s%setenv customcmdline.*%$ccl%" /boot/boot.scr.txt
 
+            if [ "$(findmnt -v -n -o SOURCE /)" != "$(findmnt -v -n -o SOURCE /boot)" ]; then
+                    sed -i "s%fprefix boot/%fprefix %g" /boot/boot.scr.txt
+            fi
+
             [ ! -e /boot/boot.scr.txt.xbian ] || rm -f /boot/boot.scr.txt.xbian
             cd /boot; ./mks
 

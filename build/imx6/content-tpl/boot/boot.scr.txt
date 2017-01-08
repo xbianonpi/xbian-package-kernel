@@ -1,8 +1,8 @@
 if test ${failedboot} != ""; then
-    setenv fprefix fail/
+    setenv fprefix boot/fail/
 else
     setenv failedboot yes
-    setenv fprefix
+    setenv fprefix boot/
     saveenv
 fi
 
