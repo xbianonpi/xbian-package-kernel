@@ -1,0 +1,13 @@
+#
+# We have to remove firmware files which conflicts
+# with Debian *firmware*.deb packages
+#
+
+case $config_platform_branch in
+    imx6*|rpi*)
+        rm -rf lib/firmware/kaweth/
+        rm -f  lib/firmware/mts_*.fw
+        ;;
+    *)
+        ;;
+esac
