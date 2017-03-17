@@ -5,7 +5,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Replaces: xbian-package-kernel3.6.11, firmware-misc-nonfree
+Replaces: xbian-package-kernel3.6.11, firmware-misc-nonfree, firmware-brcm80211
 __PKGDEPS__
 __CTRLEXTRA__
 Maintainer: mk01 <development@xbian.org>
