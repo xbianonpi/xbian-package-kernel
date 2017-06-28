@@ -1,5 +1,7 @@
 if test ${failedboot} != ""; then
     setenv fprefix boot/fail/
+    echo "Previous boot failed, trying boot from ${fprefix}"
+    sleep 3
 else
     setenv failedboot yes
     setenv fprefix boot/
@@ -45,7 +47,7 @@ ext4load mmc 0:1 ${loadaddr} ${fprefix}zImage || ext4load mmc 0:1 ${loadaddr} zI
 ext4load mmc 0:1 ${fdt_addr} ${fprefix}${fdt_file} || ext4load mmc 0:1 ${fdt_addr} ${fdt_file}
 
 if test ${fprefix} != ""; then
-    if ext4load mmc 0:1 ${ramdisk_addr_r} ${fprefix}initramfs.gz || ext4load mmc 0:1 ${ramdisk_addr_r} ${fprefix}initramfs1.gz; then
+    if ext4load mmc 0:1 ${ramdisk_addr_r} ${fprefix}initramfs.gz || ext4load mmc 0:1 ${ramdisk_addr_r} initramfs.gz || ext4load mmc 0:1 ${ramdisk_addr_r} ${fprefix}initramfs1.gz; then
         setenv initram ${ramdisk_addr_r}
     else
         setenv initram "-"
