@@ -1,3 +1,6 @@
+
+exit 0
+
 case $config_platform_branch in
     rpi*)
         if [ -x ./scripts/mkknlimg ]; then
