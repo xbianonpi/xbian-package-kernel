@@ -45,30 +45,27 @@ if [ $1 == "configure" ]; then
             [ -e /dev/root ] && rr=$(readlink -e /dev/root); [ -z "$rr" ] && rr=$(findmnt -o source / -n)
             [ -e $rr ] && fstype="$(blkid -o value -s TYPE $rr)" || fstype="$(findmnt -n -r -o FSTYPE /)"
             case $fstype in
-                btrfs)
-                    ;;
-                zfs)
-                    fstype=other
-                    rr="ZFS=$rr"
-                    ;;
-                *)
-                    fstype=other
-                    ;;
+                btrfs) ;;
+                zfs)   fstype=other; rr="ZFS=$rr" ;;
+                nfs*)  fstype=nfs ;;
+                *)     fstype=other ;;
             esac
             sed -i "s%setenv fstype.*%setenv fstype $fstype%" /boot/boot.scr.txt
 
-            ccl="setenv customcmdline"
-
-            [ -n "$rr" ] && sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
             if [ -e /boot/boot.scr.txt.user ]; then
-                ### keep video= from previous conf
-                res=$(grep video=mxcfb0:dev= /boot/boot.scr.txt.user); res=${res##*video=mxcfb0\:dev=}; res=${res%% *};
-                sed -i "s%hdmi,1920x1080.*@60,if=RGB24%$res%" /boot/boot.scr.txt
+                ### keep rootfstype=, root=, nfsroot=, ip=, cnet=, rootflags= and video= from previous conf
+                pbc=$(grep -wm1 ^'setenv baseconfig' /boot/boot.scr.txt.user | sed "s%^setenv baseconfig \+%%g;s% \+% \n%g" | grep -E  'rootfstype=|root=|nfsroot=|ip=|cnet=|rootflags=|video=' | tr -d '\n')
+                nbc=$(grep -wm1 ^'setenv baseconfig' /boot/boot.scr.txt      | sed "s%^setenv baseconfig \+%%g;s% \+% \n%g" | grep -vE 'rootfstype=|root=|nfsroot=|ip=|cnet=|rootflags=|video=' | tr -d '\n')
+                sed -i "0,/^setenv baseconfig.*/s%%setenv baseconfig $pbc$nbc%" /boot/boot.scr.txt
 
                 ### keep customcmdline from previous conf
                 ccl=$(grep 'setenv customcmdline' /boot/boot.scr.txt.user)
 
                 rm -f /boot/boot.scr.txt.user
+            else
+                [ -e /proc/cmdline ] && { rr=$(grep root= /proc/cmdline); rr=$(echo ${rr##* root=} | awk '{print $1}'); }
+                [ -n "$rr" ] && sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
+                ccl="setenv customcmdline"
             fi
 
             if [ $XARCH = iMX6 ]; then

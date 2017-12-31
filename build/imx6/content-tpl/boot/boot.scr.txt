@@ -27,17 +27,19 @@ else
     setenv ramdisk_addr_r 0x19000000
 fi
 
-setenv baseconfig $cpus $console console=tty1 coherent_pool=2M ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 quiet loglevel=0 nohdparm splash partswap dmfc=3 pcie_aspm=off net.ifnames=0 biosdevname=0
+setenv baseconfig $cpus $console console=tty1 coherent_pool=2M ahci_imx.hotplug=1 raid=noautodetect telnet root=/dev/mmcblk0p2 video=mxcfb0:dev=hdmi,1920x1080M@60,if=RGB24 rootwait consoleblank=0 selinux=0 quiet loglevel=0 nohdparm splash partswap dmfc=3 pcie_aspm=off net.ifnames=0 biosdevname=0 $customcmdline --startup-event mountall
 
 if test ${autodetectfdt} != ""; then
     setenv baseconfig $baseconfig pci=nomsi
     run autodetectfdt
 fi
 
-if test ${fstype} != btrfs; then
-    setenv bootargs $mcp $baseconfig $customcmdline rootfstype=ext4 rootflags=data=writeback --startup-event mountall
+if test ${fstype} = btrfs; then
+    setenv bootargs $mcp rootfstype=$fstype rootflags=subvol=root/@,autodefrag,compress=lz4 $baseconfig
+elif test ${fstype} = nfs; then
+    setenv bootargs $mcp rootfstype=$fstype $baseconfig
 else
-    setenv bootargs $mcp $baseconfig $customcmdline rootfstype=btrfs rootflags=subvol=root/@,autodefrag,compress=lz4 --startup-event mountall
+    setenv bootargs $mcp rootfstype=ext4 rootflags=data=writeback $baseconfig
 fi
 
 if test ${debug} != ""; then exit 1; fi
