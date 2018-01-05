@@ -1,7 +1,0 @@
-config_source_configure=
-config_build_env=CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm
-config_source_branch=rpi-3.18.y
-config_source_addr=git://github.com/raspberrypi/linux.git
-config_deb_depends=xbian-package-firmware (>=1.4.15), rng-tools, xbian-package-initramfs-tools (>= 1.3.3)
-config_deb_pkgname=linux-image-bcm2836
-config_deb_ctrlextra=Conflicts: xbian-package-kernel
