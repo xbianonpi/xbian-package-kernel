@@ -39,7 +39,7 @@ if [ -d .zfs -a -d .spl ]; then
 	( export $config_build_env 2>/dev/null; ) && export $config_build_env || :
 
 	extraprm=''
-	[ -z "$CROSS_COMPILE" ] || extraprm=" --target=${CROSS_COMPILE%-} "
+	[ -z "$CROSS_COMPILE" ] || extraprm=" --target=${CROSS_COMPILE%-} --host=${CROSS_COMPILE%-} "
 	if [ $runconfigure -eq 1 ]; then
 		echo ...running configure
 
