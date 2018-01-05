@@ -1,14 +1,16 @@
-imx6-4.3.y stable imx6-jessie
-imx6-4.4.y stable imx6-jessie
-imx6-4.6.y devel imx6-jessie
-imx6-4.8.y stable imx6-${config_os_version}
+imx6-4.3.y  stable imx6-jessie
+imx6-4.4.y  stable imx6-jessie
+imx6-4.6.y  devel imx6-jessie
+imx6-4.8.y  stable imx6-${config_os_version}
 
-rpi-4.4.y stable rpi-jessie
-rpi-4.6.y devel rpi-jessie
-rpi-4.8.y devel rpi-jessie
-rpi-4.9.y stable rpi-${config_os_version}
+rpi-4.4.y  stable rpi-jessie
+rpi-4.6.y  devel rpi-jessie
+rpi-4.8.y  devel rpi-jessie
+rpi-4.9.y  stable rpi-${config_os_version}
+rpi-4.14.y staging rpi-${config_os_version}
 
-rpi2-4.4.y stable rpi2-jessie
-rpi2-4.6.y devel rpi2-jessie
-rpi2-4.8.y devel rpi2-jessie
-rpi2-4.9.y stable rpi2-${config_os_version}
+rpi2-4.4.y  stable rpi2-jessie
+rpi2-4.6.y  devel rpi2-jessie
+rpi2-4.8.y  devel rpi2-jessie
+rpi2-4.9.y  stable rpi2-${config_os_version}
+rpi2-4.14.y staging rpi2-${config_os_version}
