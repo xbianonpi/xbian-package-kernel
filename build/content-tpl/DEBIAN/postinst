@@ -2,40 +2,124 @@
 
 KVER="__KVER__"
 KVER=$(echo $KVER | tr '~' '-')
+pKVER=$(echo $2 | cut -f 1 -d '-')
 fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
 export KVER
+XARCH="$(/usr/local/sbin/xbian-arch)"
 
-[ -e /lib/libarmmem.so ] && { grep -q 'libarmmem.so' /etc/ld.so.preload || echo '/lib/libarmmem.so' >> /etc/ld.so.preload; }
-if [ "$(stat -c %d:%i /)" != "$(stat -c %d:%i /proc/1/root/. 2>/dev/null)" ]; then
-        [ -e /etc/ld.so.preload ] && mv /etc/ld.so.preload /etc/ld.so.preload.chroot || :
-fi
+case $XARCH in
+    RPI)
+        [ -e /lib/libarmmem.so ] && { grep -q 'libarmmem.so' /etc/ld.so.preload 2>/dev/null || echo '/lib/libarmmem.so' >> /etc/ld.so.preload; }
+        [ "$(stat -c %d:%i /)" != "$(stat -c %d:%i /proc/1/root/. 2>/dev/null)" ] && [ -e /etc/ld.so.preload ] && mv /etc/ld.so.preload /etc/ld.so.preload.chroot || :
+    ;;
+esac
 
 if [ $1 == "configure" ]; then
 
-        mv /boot-new/kernel.img-$KVER /boot/kernel.img
-        mv /boot-new/System.map-$KVER /boot/
-        cp /boot/System.map-$KVER /boot/System.map
-        [ -e /boot/overlays ] && rm -fr /boot/overlays
-        mv /boot-new/*.dtb /boot/ > /dev/null 2>&1
-        mv /boot-new/overlays /boot/ > /dev/null 2>&1
-        [ -e /boot-new/README.overlays ] && mv /boot-new/README.overlays /boot/ > /dev/null 2>&1
-        rm -r /boot-new
-        depmod -a $KVER
+    case $XARCH in
+        RPI)
+            mv /boot-new/kernel.img-$KVER /boot/kernel.img
+            mv /boot-new/System.map-$KVER /boot/
+            cp /boot/System.map-$KVER /boot/System.map
+            [ -e /boot/overlays ] && rm -fr /boot/overlays
+            mv /boot-new/*.dtb /boot/ &>/dev/null
+            mv /boot-new/overlays /boot/ &>/dev/null
+            [ -e /boot-new/README.overlays ] && mv /boot-new/README.overlays /boot/ &>/dev/null
+            rm -r /boot-new
+            depmod -a $KVER
 
-        for f in $fpool; do
+            for f in $fpool; do
                 { [ -f $f.xbian ] && rm $f.xbian; } || true
-        done
+            done
+        ;;
 
-        [ -h /lib/modules/$KVER.xbian/build ] && mv /lib/modules/$KVER.xbian/build /lib/modules/$KVER
-        [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian || true
+        iMX6|MVEBU)
+            [ ! -e /boot/mks ] || { rm -f /usr/local/sbin/mks; ln -s /boot/mks /usr/local/sbin/; :; }
 
-        insserv -fr rng-tools &>/dev/null
-        udevadm control --reload-rules || :
+            if [ -b /dev/mmcblk0 ]; then
+                echo "Updating u-boot"
 
-        INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d > /dev/null 2>&1
+                case $XARCH in
+                    iMX6)
+                        dd if=/etc/uboot-env/SPL of=/dev/mmcblk0 bs=1K seek=1
+                        dd if=/etc/uboot-env/u-boot.img of=/dev/mmcblk0 bs=1K seek=42 conv=fsync
+                    ;;
+                    MVEBU)
+                        dd if=/etc/uboot-env/u-boot-clearfog.mmc of=/dev/mmcblk0 bs=512 seek=1
+                    ;;
+                    *)
+                        ;;
+                esac
+
+                sed -i "s%#$XARCH[\ ]*%%g" /etc/uboot-env.conf
+
+                if [ ! -e /boot/noenv ]; then
+                    uboot-env del -i || uboot-env del -I
+                    uboot-env set < /etc/uboot-env/env-$XARCH.txt
+                    uboot-env set script boot.scr
+                    uboot-env set bootdelay 2
+                fi
+
+            fi
+
+            [ -e /dev/root ] && rr=$(readlink -e /dev/root); [ -z "$rr" ] && rr=$(findmnt -o source / -n)
+            [ -e $rr ] && fstype="$(blkid -o value -s TYPE $rr)" || fstype="$(findmnt -n -r -o FSTYPE /)"
+            case $fstype in
+                btrfs) ;;
+                zfs)   fstype=other; rr="ZFS=$rr" ;;
+                nfs*)  fstype=nfs ;;
+                *)     fstype=other ;;
+            esac
+            sed -i "s%setenv fstype.*%setenv fstype $fstype%" /boot/boot.scr.txt
+
+            if [ -e /boot/boot.scr.txt.user ]; then
+                ### keep rootfstype=, root=, nfsroot=, ip=, cnet=, rootflags= and video= from previous conf
+                pbc=$(grep -wm1 ^'setenv baseconfig' /boot/boot.scr.txt.user | sed "s%^setenv baseconfig \+%%g;s% \+% \n%g" | grep -E  'rootfstype=|root=|nfsroot=|ip=|cnet=|rootflags=|video=' | tr -d '\n')
+                nbc=$(grep -wm1 ^'setenv baseconfig' /boot/boot.scr.txt      | sed "s%^setenv baseconfig \+%%g;s% \+% \n%g" | grep -vE 'rootfstype=|root=|nfsroot=|ip=|cnet=|rootflags=|video=' | tr -d '\n')
+                sed -i "0,/^setenv baseconfig.*/s%%setenv baseconfig $pbc$nbc%" /boot/boot.scr.txt
+
+                ### keep customcmdline from previous conf
+                ccl=$(grep 'setenv customcmdline' /boot/boot.scr.txt.user)
+
+                rm -f /boot/boot.scr.txt.user
+            else
+                [ -e /proc/cmdline ] && { rr=$(grep root= /proc/cmdline); rr=$(echo ${rr##* root=} | awk '{print $1}'); }
+                [ -n "$rr" ] && sed -i "s%root=/dev/mmcblk0p2%root=$rr%" /boot/boot.scr.txt
+                ccl="setenv customcmdline"
+            fi
+
+            if [ $XARCH = iMX6 ]; then
+                echo "$ccl" | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
+                echo "$ccl" | grep -q 'mxc_hdmi.enable_3d' || ccl="$ccl mxc_hdmi.enable_3d=enable"
+                echo "$ccl" | grep -q 'vpu352=' || ccl="$ccl vpu352=0"
+                echo "$ccl" | grep -q 'overclock=' || ccl="$ccl overclock=0"
+                update-rc.d imx6-bluetooth defaults &>/dev/null
+            fi
+
+            [ -z "$ccl" ] || sed -i "s%setenv customcmdline.*%$ccl%" /boot/boot.scr.txt
+
+            if [ "$(findmnt -v -n -o SOURCE /)" != "$(findmnt -v -n -o SOURCE /boot)" ]; then
+                sed -i "s%fprefix boot/%fprefix %g" /boot/boot.scr.txt
+            fi
+
+            [ ! -e /boot/boot.scr.txt.xbian ] || rm -f /boot/boot.scr.txt.xbian
+            cd /boot; ./mks
+        ;;
+
+        *)
+        ;;
+    esac
+
+    [ -h /lib/modules/$KVER.xbian/build ] && mv /lib/modules/$KVER.xbian/build /lib/modules/$KVER
+    set -x
+    [ -d /lib/modules/$KVER.xbian ] && { rm -fr /lib/modules/$KVER.xbian || echo "rm -fr /lib/modules/$KVER.xbian" | at -M now + 2min &>/dev/null; }
+    [ -n "$pKVER" ] && [ "$pKVER" != "$KVER" ] && [ -d /lib/modules/$pKVER ] && { rm -fr /lib/modules/$pKVER || echo "rm -fr /lib/modules/$pKVER" | at -M now + 2min &>/dev/null; }
+
+    insserv -fr rng-tools &>/dev/null
+    udevadm control --reload-rules || :
+
+    INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d &>/dev/null
 
 fi
 
-[ -e "/lib/modules/3.9.8+" ] && rm -fr "/lib/modules/3.9.8+"
-
-echo "xbian-package-kernel" >>  /var/run/reboot-required || :
+echo "xbian-package-kernel" >> /var/run/reboot-required || :

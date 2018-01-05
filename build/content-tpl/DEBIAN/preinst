@@ -4,17 +4,43 @@ KVER="__KVER__"
 KVER=$(echo $KVER | tr '~' '-')
 fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
 export KVER
+XARCH="$(/usr/local/sbin/xbian-arch)"
+
+case $XARCH in
+    iMX6|MVEBU) ! test -e /etc/ld.so.preload || sed -i '/libarmmem.so/d' /etc/ld.so.preload ;;
+esac
 
 if [ $1 == "install" -o $1 == "upgrade" ]; then
 
-        INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/preinst.d/ > /dev/null 2>&1
-#	{ mountpoint -q /boot && [ "$(findmnt -o source -n /boot)" = '/dev/mmcblk0p1' ]; } || { umount /boot >/dev/null 2>&1; mount -t vfat /dev/mmcblk0p1 /boot || { echo "CAN'T MOUNT BOOT"; exit 1; }; }
-	mountpoint -q /boot || mount /boot || exit 1
-	rm -f /boot/System.map*
-	for f in $fpool; do
-		{ [ -f $f ] && mv $f $f.xbian; } || true
-	done
+    INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/preinst.d/ &>/dev/null
+    #{ mountpoint -q /boot && [ "$(findmnt -o source -n /boot)" = '/dev/mmcblk0p1' ]; } || { umount /boot >/dev/null 2>&1; mount -t vfat /dev/mmcblk0p1 /boot || { echo "CAN'T MOUNT BOOT"; exit 1; }; }
+    mountpoint -q /boot || mount /boot || { echo "FATAL: /boot is not mountable, aborting"; exit 1; }
 
-        [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
+    case $XARCH in
+        RPI)
+            rm -f /boot/System.map*
+            for f in $fpool; do
+                { [ -f $f ] && mv $f $f.xbian; } || true
+            done
+
+            [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
+        ;;
+
+        iMX6|MVEBU)
+            mkdir -p /usr/local/sbin
+
+            [ -d /lib/modules/$KVER.xbian ] && rm -fr /lib/modules/$KVER.xbian
+            [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || true
+            [ -d /lib/modules/$KVER.xbian/extra ] && { mkdir -p /lib/modules/$KVER; mv /lib/modules/$KVER.xbian/extra /lib/modules/$KVER; } || :
+
+            [ -e /boot/boot.scr.txt.xbian ] && cp /boot/boot.scr.txt.xbian /boot/boot.scr.txt.user
+            [ -e /boot/boot.scr.txt ] && cp /boot/boot.scr.txt /boot/boot.scr.txt.user
+        ;;
+
+        *)
+        ;;
+    esac
 
 fi
+
+exit 0
