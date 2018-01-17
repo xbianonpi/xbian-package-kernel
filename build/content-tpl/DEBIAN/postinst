@@ -111,7 +111,6 @@ if [ $1 == "configure" ]; then
     esac
 
     [ -h /lib/modules/$KVER.xbian/build ] && mv /lib/modules/$KVER.xbian/build /lib/modules/$KVER
-    set -x
     [ -d /lib/modules/$KVER.xbian ] && { rm -fr /lib/modules/$KVER.xbian || echo "rm -fr /lib/modules/$KVER.xbian" | at -M now + 2min &>/dev/null; }
     [ -n "$pKVER" ] && [ "$pKVER" != "$KVER" ] && [ -d /lib/modules/$pKVER ] && { rm -fr /lib/modules/$pKVER || echo "rm -fr /lib/modules/$pKVER" | at -M now + 2min &>/dev/null; }
 
