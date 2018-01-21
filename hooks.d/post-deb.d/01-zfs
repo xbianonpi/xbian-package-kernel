@@ -34,7 +34,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: linux-image-armmp (= $dver)
+Pre-Depends: linux-image-armmp (= $dver)
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
 EOF
@@ -48,7 +48,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: linux-image-${kver%+}-armmp (= $dver)
+Pre-Depends: linux-image-${kver%+}-armmp (= $dver)
 Conflicts: linux-zfs-${kver%+}
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
@@ -63,7 +63,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: xbian-package-kernel (= $dver)
+Pre-Depends: xbian-package-kernel (= $dver)
 Conflicts: linux-zfs-${kver%+}
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
@@ -78,7 +78,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: linux-image-bcm2836 (= $dver)
+Pre-Depends: linux-image-bcm2836 (= $dver)
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
 EOF
