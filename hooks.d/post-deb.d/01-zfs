@@ -1,4 +1,4 @@
-[ -d .zfs -a -d .spl ] || exit 0
+[ -d .zfs ] || exit 0
 
 DEST=$(readlink -f ../../../content/)
 ARCH=arm
@@ -13,9 +13,7 @@ echo "... cleaning tmp dir"
 ( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; )
 
 echo "... installing kernel modules"
-cd .spl
-eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1
-cd ../.zfs
+cd .zfs
 eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1
 
 rm -fr $DEST/usr

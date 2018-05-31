@@ -10,7 +10,7 @@ esac
 
 set -e
 
-for rr in .zfs .spl; do
+for rr in .zfs; do
 
     gitbranch=
     case $rr in
