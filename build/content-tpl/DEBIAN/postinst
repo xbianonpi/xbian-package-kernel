@@ -31,6 +31,44 @@ if [ $1 == "configure" ]; then
             for f in $fpool; do
                 { [ -f $f.xbian ] && rm $f.xbian; } || true
             done
+
+            if dpkg --compare-versions "$KVER" gt "4.13"; then
+                for lb in $(grep ^dtoverlay=lirc-rpi /boot/config.txt); do
+                    for PARM in "gpio_in_pin=" "gpio_out_pin=" "gpio_in_pull" "invert" "debug"; do
+                        p=$(echo "$lb" | awk -F',' -v a=".*$PARM" -v b="$PARM" "/$PARM/"'{ sub(a,b); print $1 }' 2>/dev/null)
+                        [ -z "$p" ] || { o=${p%%=*}; v=${p#*=}; [ "$v" = "$o" ] && v=1; eval $o=$v; }
+                    done
+                    ln="dtoverlay=gpio-ir"
+                    [ -z "$gpio_in_pin" ]  || ln="$ln,gpio_pin=$gpio_in_pin"
+                    [ -z "$gpio_in_pull" ] || ln="$ln,gpio_pull=$gpio_in_pull"
+                    [ -z "$gpio_out_pin" ] || gpio_tx="\ndtoverlay=gpio-ir-tx,gpio_pin=$gpio_out_pin"
+                    [ -z "$invert" ] || { [ -n "$gpio_tx" ] && gpio_tx="$gpio_tx,invert" || gpio_tx="\ndtoverlay=gpio-ir-tx,invert"; }
+                    sed -i "s/^$lb/$ln$gpio_tx/g" /boot/config.txt
+                done
+            elif dpkg --compare-versions "$pKVER" gt "4.13"; then
+               for li in $(grep ^dtoverlay=gpio-ir /boot/config.txt); do
+                    gpio_in_pin=''; gpio_pull=''
+                    for PARM in "gpio_pin=" "gpio_pull"; do
+                        p=$(echo "$lb" | awk -F',' -v a=".*$PARM" -v b="$PARM" "/$PARM/"'{ sub(a,b); print $1 }' 2>/dev/null)
+                        [ -z "$p" ] || { o=${p%%=*}; v=${p#*=}; [ "$v" = "$o" ] && v=1; eval $o=$v; }
+                    done
+                done
+                gpio_in_pin=$gpio_pin; gpio_pin=''
+                for lo in $(grep ^dtoverlay=gpio-ir-tx /boot/config.txt); do
+                    gpio_pin=''; invert=''
+                    for PARM in "gpio_pin=" "invert"; do
+                        p=$(echo "$lb" | awk -F',' -v a=".*$PARM" -v b="$PARM" "/$PARM/"'{ sub(a,b); print $1 }' 2>/dev/null)
+                        [ -z "$p" ] || { o=${p%%=*}; v=${p#*=}; [ "$v" = "$o" ] && v=1; eval $o=$v; }
+                    done
+                done
+                ln="dtoverlay=lirc-rpi"
+                [ -z "$gpio_in_pin" ] || ln="$ln,gpio_in_pin=$gpio_in_pin"
+                [ -z "$gpio_pin" ] || ln="$ln,gpio_out_pin=$gpio_pin"
+                [ -z "$gpio_pull" ] || ln="$ln,gpio_in_pull=$gpio_pull"
+                [ -z "$invert" ] || ln="$ln,invert"
+                sed "s/^dtoverlay=gpio-ir/$ln/g" /boot/config.txt
+                sed "/^dtoverlay=gpio-ir-tx/d" /boot/config.txt
+            fi
         ;;
 
         iMX6|MVEBU)
