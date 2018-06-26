@@ -1,8 +1,7 @@
 
 dest='.mt76x0u'
 module='./os/linux/mt7610u_sta.ko'
-#repo='https://github.com/xtknight/mt7610u-linksys-ae6000-wifi-fixes'
-repo='https://github.com/mkreisl/mt7610u-linksys-ae6000-wifi-fixes'
+repo='https://github.com/xtknight/mt7610u-linksys-ae6000-wifi-fixes'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
     cd ../build/$config_platform_branch/working
@@ -11,9 +10,11 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
         cd $dest
         git reset --hard
         git pull
+        git pull origin pull/37/head:master
     else
         git clone $repo $dest
         cd $dest
+        git pull origin pull/37/head:master
     fi
 
     rm -f include/rtw_compat.h
