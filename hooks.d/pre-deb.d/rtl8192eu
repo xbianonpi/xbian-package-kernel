@@ -17,7 +17,7 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
     CONFIG_PLATFORM_I386_PC=n
     CONFIG_PLATFORM_ARM_RPI=y
 
-    eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver
+    eval $config_build_env make KSRC=$(readlink -f ../) -j$(grep -c ^processor /proc/cpuinfo) KVER=$kver
     eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver strip
 
     kver=$(echo $kver | tr '~' '-')
