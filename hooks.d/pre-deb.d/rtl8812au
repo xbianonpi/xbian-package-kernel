@@ -20,7 +20,7 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
 
     sed -i "s/EXTRA_CFLAGS += -Werror/EXTRA_CFLAGS += -Wno-sign-compare/g" Makefile
 
-    eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver
+    eval $config_build_env make KSRC=$(readlink -f ../) -j$(grep -c ^processor /proc/cpuinfo) KVER=$kver
     eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver strip
 
     kver=$(echo $kver | tr '~' '-')
