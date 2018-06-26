@@ -71,7 +71,7 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
 " | patch -p1
 
     #eval $config_build_env make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm LINUX_SRC=$(readlink -f ../) KVER=$kver clean
-    eval $config_build_env make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm LINUX_SRC=$(readlink -f ../) KVER=$kver
+    eval $config_build_env make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm LINUX_SRC=$(readlink -f ../) -j$(grep -c ^processor /proc/cpuinfo) KVER=$kver
     eval $config_build_env arm-linux-gnueabihf-strip --strip-unneeded $module
     #eval $config_build_env make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm LINUX_SRC=$(readlink -f ../) KVER=$kver install
 
