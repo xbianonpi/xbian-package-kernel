@@ -1,6 +1,7 @@
 
 dest='.rtl8192eu'
 repo='https://github.com/Mange/rtl8192eu-linux-driver.git'
+branch='realtek-4.4.x'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
     cd ../build/$config_platform_branch/working
@@ -10,7 +11,7 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
         git reset --hard
         git pull
     else
-        git clone $repo $dest
+        git clone -b $branch $repo $dest
         cd $dest
     fi
 
