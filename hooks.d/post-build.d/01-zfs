@@ -21,6 +21,11 @@ if [ -d .zfs ]; then
 		[ "$tdir" = "$(pwd)" ] || git clean -xdf ./
 	fi
 
+	if [ -e ./scripts/make_gitrev.sh ]; then
+		echo ...running make_gitrev.sh
+		./scripts/make_gitrev.sh
+	fi
+
 	if [ ! -e ./configure ]; then
 		echo ...running autogen.sh
 		./autogen.sh >/dev/null || :

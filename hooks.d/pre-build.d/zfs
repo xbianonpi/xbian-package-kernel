@@ -45,7 +45,7 @@ for rr in .zfs; do
 
         )
     else
-        git clone -b "$gitbranch" --depth=1 --single-branch "$giturl" $rr
+        git clone -b "$gitbranch" --single-branch "$giturl" $rr
 	if [ $rr = ".zfs" ]; then
 		cd .zfs
 		### NFS patch doesn't merge anymore
