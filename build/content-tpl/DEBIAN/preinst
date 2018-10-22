@@ -16,6 +16,11 @@ if [ $1 == "install" -o $1 == "upgrade" ]; then
     #{ mountpoint -q /boot && [ "$(findmnt -o source -n /boot)" = '/dev/mmcblk0p1' ]; } || { umount /boot >/dev/null 2>&1; mount -t vfat /dev/mmcblk0p1 /boot || { echo "CAN'T MOUNT BOOT"; exit 1; }; }
     mountpoint -q /boot || mount /boot || { echo "FATAL: /boot is not mountable, aborting"; exit 1; }
 
+    if dpkg --compare-versions "$KVER" ge "4.15" && findmnt -n / | grep -q "compress.*=lz4"; then
+        echo -e "FATAL: you have LZ4 compression enabled\n       This is not longer supported by kernel v$KVER"
+        exit 1
+    fi
+
     case $XARCH in
         RPI)
             rm -f /boot/System.map*
