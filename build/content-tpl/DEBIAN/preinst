@@ -17,7 +17,8 @@ if [ $1 == "install" -o $1 == "upgrade" ]; then
     mountpoint -q /boot || mount /boot || { echo "FATAL: /boot is not mountable, aborting"; exit 1; }
 
     if dpkg --compare-versions "$KVER" ge "4.15" && findmnt -n / | grep -q "compress.*=lz4"; then
-        echo -e "FATAL: you have LZ4 compression enabled\n       This is not longer supported by kernel v$KVER"
+        echo -e "FATAL: you have LZ4 compression enabled, but\n       this is not longer supported by kernel v$KVER"
+        echo -e "       Please recompress filesystem by running 'sudo xbian-compress'"
         exit 1
     fi
 
