@@ -1,7 +1,9 @@
 
 dest='.rtl8812au'
 #repo='https://github.com/gnab/rtl8812au.git'
-repo='https://github.com/abperiasamy/rtl8812AU_8821AU_linux'
+#repo='https://github.com/abperiasamy/rtl8812AU_8821AU_linux'
+repo='https://github.com/aircrack-ng/rtl8812au'
+branch='v5.2.20'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
     cd ../build/$config_platform_branch/working
@@ -11,7 +13,7 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
         git reset --hard
         git pull
     else
-        git clone $repo $dest
+        git clone -b $branch $repo $dest
         cd $dest
     fi
 
