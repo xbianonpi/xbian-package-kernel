@@ -5,7 +5,6 @@ if [ "$(find -name mt76.ko | wc -l)" -gt 0 ]; then
 	exit 0
 fi
 
-exit 1
 dest='.mt76x0u'
 module='./os/linux/mt7610u_sta.ko'
 repo='https://github.com/xtknight/mt7610u-linksys-ae6000-wifi-fixes'
