@@ -47,6 +47,7 @@ if [ $1 == "install" -o $1 == "upgrade" ]; then
         ;;
     esac
 
+    modprobe -q configs
 fi
 
 exit 0
