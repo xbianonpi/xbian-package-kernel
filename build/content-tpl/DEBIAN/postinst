@@ -104,7 +104,7 @@ if [ $1 == "configure" ]; then
             [ -e $rr ] && fstype="$(blkid -o value -s TYPE $rr)" || fstype="$(findmnt -n -r -o FSTYPE /)"
             case $fstype in
                 btrfs) ;;
-                zfs)   fstype=other; rr="ZFS=$rr" ;;
+                zfs)   fstype=zfs; rr="ZFS=$rr" ;;
                 nfs*)  fstype=nfs ;;
                 *)     fstype=other ;;
             esac

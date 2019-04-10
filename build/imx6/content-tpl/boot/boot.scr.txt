@@ -35,8 +35,8 @@ if test ${autodetectfdt} != ""; then
 fi
 
 if test ${fstype} = btrfs; then
-    setenv bootargs $mcp rootfstype=$fstype rootflags=subvol=root/@,autodefrag,compress=lz4 $baseconfig
-elif test ${fstype} = nfs; then
+    setenv bootargs $mcp rootfstype=$fstype rootflags=subvol=root/@,autodefrag,compress=lzo $baseconfig
+elif test ${fstype} = nfs || test ${fstype} = zfs; then
     setenv bootargs $mcp rootfstype=$fstype $baseconfig
 else
     setenv bootargs $mcp rootfstype=ext4 rootflags=data=writeback $baseconfig
