@@ -1,6 +1,11 @@
 
 case $config_platform_branch in
-    imx6*|rk*|bpi*|rpi2*)
+    imx6*|rk*|bpi*)
+        dirs='spl zfs'
+        ;;
+    rpi2*)
+        gitbranch=master
+        dirs='zfs'
         ;;
     *)
         rm -fr .zfs .spl 2>/dev/null
@@ -10,20 +15,11 @@ esac
 
 set -e
 
-for rr in .zfs; do
+for rr in $dirs; do
 
-    gitbranch=
-    case $rr in
-        '.zfs')
-            giturl='git://github.com/zfsonlinux/zfs.git'
-            #gitbranch=
-            ;;
-        '.spl')
-            giturl='git://github.com/zfsonlinux/spl.git'
-            ;;
-    esac
-
-    [ -n "$gitbranch" ] || gitbranch=master
+    [ "$gitbranch" = master ] || gitbranch=$rr-0.7-release
+    giturl="git://github.com/zfsonlinux/$rr.git"
+    rr=".$rr"
 
     if [ -d $rr ]; then
         ( cd $rr

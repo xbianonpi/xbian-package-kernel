@@ -13,8 +13,9 @@ echo "... cleaning tmp dir"
 ( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; )
 
 echo "... installing kernel modules"
-cd .zfs
-eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1
+for d in .spl .zfs; do
+	[ -d $d ] && ( cd $d; eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1; )
+done
 
 rm -fr $DEST/usr
 

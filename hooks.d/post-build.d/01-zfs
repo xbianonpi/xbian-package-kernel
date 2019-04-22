@@ -13,46 +13,53 @@ set -e
 
 if [ -d .zfs ]; then
 
-	echo "BUILDING ZFS/SPL - Please wait ..."
-	cd .zfs; runconfigure=0
+	[ -e .spl ] && export WITHSPL="--with-spl=$(readlink -f .spl)" || WITHSPL=''
 
-	if [ -e ./Makefile ]; then
-		tdir=$(grep abs_builddir Makefile | awk -F'= ' '{print $2}')
-		[ "$tdir" = "$(pwd)" ] || git clean -xdf ./
-	fi
+	for d in .spl .zfs; do
+	(
+		[ -d $d ] || continue
+		echo "BUILDING $d... Please wait"
+		cd $d; runconfigure=0
 
-	if [ -e ./scripts/make_gitrev.sh ]; then
-		echo ...running make_gitrev.sh
-		./scripts/make_gitrev.sh
-	fi
+		if [ -e ./Makefile ]; then
+			tdir=$(grep abs_builddir Makefile | awk -F'= ' '{print $2}')
+			[ "$tdir" = "$(pwd)" ] || git clean -xdf ./
+		fi
 
-	if [ ! -e ./configure ]; then
-		echo ...running autogen.sh
-		./autogen.sh >/dev/null || :
-		runconfigure=1
-	fi
-	if [ -e configure ]; then
-		if [ -e Makefile ]; then
-			[ "$( find ./ -maxdepth 1 -iname Makefile ! -newer ../.config | grep -c .; )" -gt 0 ] && runconfigure=1 || :
-			[ "$( find ./ -maxdepth 1 -iname Makefile ! -newer ./configure | grep -c .; )" -gt 0 ] && runconfigure=1 || :
-		else
+		if [ -e ./scripts/make_gitrev.sh ]; then
+			echo ...running make_gitrev.sh
+			./scripts/make_gitrev.sh
+		fi
+
+		if [ ! -e ./configure ]; then
+			echo ...running autogen.sh
+			./autogen.sh >/dev/null || :
 			runconfigure=1
 		fi
-	fi
-	[ ! -e .force.recompile ] || { runconfigure=1; rm -f .force.recompile; }
-	( export $config_build_env 2>/dev/null; ) && export $config_build_env || :
+		if [ -e configure ]; then
+			if [ -e Makefile ]; then
+				[ "$( find ./ -maxdepth 1 -iname Makefile ! -newer ../.config | grep -c .; )" -gt 0 ] && runconfigure=1 || :
+				[ "$( find ./ -maxdepth 1 -iname Makefile ! -newer ./configure | grep -c .; )" -gt 0 ] && runconfigure=1 || :
+			else
+				runconfigure=1
+			fi
+		fi
+		[ ! -e .force.recompile ] || { runconfigure=1; rm -f .force.recompile; }
+		( export $config_build_env 2>/dev/null; ) && export $config_build_env || :
 
-	extraprm=''
-	[ -z "$CROSS_COMPILE" ] || extraprm=" --target=${CROSS_COMPILE%-} --host=${CROSS_COMPILE%-} "
-	if [ $runconfigure -eq 1 ]; then
-		echo ...running configure
+		extraprm=''
+		[ -z "$CROSS_COMPILE" ] || extraprm=" --target=${CROSS_COMPILE%-} --host=${CROSS_COMPILE%-} "
+		if [ $runconfigure -eq 1 ]; then
+			echo ...running configure
 
-		#### tmp fix for cross build
-		sed -i 's/as_fn_error $? "cannot run test program while cross compiling/echo $? "cannot run test program while cross compiling/g' ./configure
-		eval $config_build_env ./configure $extraprm --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../)
-	fi
+			#### tmp fix for cross build
+			sed -i 's/as_fn_error $? "cannot run test program while cross compiling/echo $? "cannot run test program while cross compiling/g' ./configure
+			eval $config_build_env ./configure $extraprm --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) $WITHSPL
+		fi
 
-	cd module
-	echo ...running make
-	eval $config_build_env make
+		cd module
+		echo ...running make
+		eval $config_build_env make
+	)
+	done
 fi
