@@ -3,7 +3,7 @@ dest='.rtl8812au'
 #repo='https://github.com/gnab/rtl8812au.git'
 #repo='https://github.com/abperiasamy/rtl8812AU_8821AU_linux'
 repo='https://github.com/aircrack-ng/rtl8812au'
-branch='v5.2.20'
+branch='v5.3.4'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
     cd ../build/$config_platform_branch/working
@@ -27,7 +27,6 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
 
     kver=$(echo $kver | tr '~' '-')
     mkdir -p ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/
-    [ -e 8812au.ko ] && install -p -m 644 8812au.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/) || :
-    [ -e rtl8812au.ko ] && install -p -m 644 rtl8812au.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/) || :
+    install -p -m 644 *.ko $(readlink -f ../../../../content/lib/modules/$kver/kernel/drivers/net/wireless/) || :
 )
 
