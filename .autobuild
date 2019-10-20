@@ -2,6 +2,7 @@ imx6-4.3.y  stable imx6-jessie
 imx6-4.4.y  stable imx6-jessie
 imx6-4.6.y  devel imx6-jessie
 imx6-4.8.y  stable imx6-${config_os_version}
+imx6-4.10.y devel imx6-${config_os_version}
 
 rpi-4.4.y  stable rpi-jessie
 rpi-4.6.y  devel rpi-jessie
@@ -15,4 +16,4 @@ rpi2-4.6.y  devel rpi2-jessie
 rpi2-4.8.y  devel rpi2-jessie
 rpi2-4.9.y  stable armv7l-${config_os_version}
 rpi2-4.14.y stable rpi2-${config_os_version}
-rpi2-4.19.y stable rpi2-${config_os_version}
+rpi2-4.19.y staging rpi2-${config_os_version}
