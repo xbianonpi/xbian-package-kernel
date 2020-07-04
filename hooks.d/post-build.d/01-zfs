@@ -57,6 +57,7 @@ if [ -d .zfs ]; then
 			eval $config_build_env ./configure $extraprm --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) $WITHSPL
 		fi
 
+		eval $config_build_env make gitrev || :
 		cd module
 		echo ...running make
 		eval $config_build_env make
