@@ -1,9 +1,9 @@
 
 case $config_platform_branch in
-    imx6*|rk*|bpi*)
+    rk*|bpi*)
         dirs='spl zfs'
         ;;
-    rpi2*)
+    rpi2*|imx6*)
         gitbranch=master
         dirs='zfs'
         ;;
