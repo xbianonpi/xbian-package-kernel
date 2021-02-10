@@ -3,7 +3,7 @@ dest='.rtl8812au'
 #repo='https://github.com/gnab/rtl8812au.git'
 #repo='https://github.com/abperiasamy/rtl8812AU_8821AU_linux'
 repo='https://github.com/aircrack-ng/rtl8812au'
-branch='v5.3.4'
+branch='v5.6.4.2'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
     cd ../build/$config_platform_branch/working
@@ -17,10 +17,9 @@ kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_vers
         cd $dest
     fi
 
-    CONFIG_PLATFORM_I386_PC=n
-    CONFIG_PLATFORM_ARM_RPI=y
-
     sed -i "s/EXTRA_CFLAGS += -Werror/EXTRA_CFLAGS += -Wno-sign-compare/g" Makefile
+    sed -i "s/CONFIG_PLATFORM_I386_PC =.*/ CONFIG_PLATFORM_I386_PC = n/g" Makefile
+    sed -i "s/CONFIG_PLATFORM_ARM_RPI =.*/ CONFIG_PLATFORM_ARM_RPI = y/g" Makefile
 
     eval $config_build_env make KSRC=$(readlink -f ../) -j$(grep -c ^processor /proc/cpuinfo) KVER=$kver
     eval $config_build_env make KSRC=$(readlink -f ../) KVER=$kver strip
