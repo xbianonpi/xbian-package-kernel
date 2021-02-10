@@ -112,9 +112,14 @@ if [ $1 == "configure" ]; then
 
             if [ -e /boot/boot.scr.txt.user ]; then
                 ### keep rootfstype=, root=, nfsroot=, ip=, cnet=, rootflags= and video= from previous conf
-                pbc=$(grep -wm1 ^'setenv baseconfig' /boot/boot.scr.txt.user | sed "s%^setenv baseconfig \+%%g;s% \+% \n%g" | grep -E  'rootfstype=|root=|nfsroot=|ip=|cnet=|rootflags=|video=' | tr -d '\n')
-                nbc=$(grep -wm1 ^'setenv baseconfig' /boot/boot.scr.txt      | sed "s%^setenv baseconfig \+%%g;s% \+% \n%g" | grep -vE 'rootfstype=|root=|nfsroot=|ip=|cnet=|rootflags=|video=' | tr -d '\n')
+                pbc=$(grep -wm1 ^'setenv baseconfig' /boot/boot.scr.txt.user | sed "s%^setenv baseconfig \+%%g;s% \+% \n%g" | grep -E  'rootfstype=|root=|nfsroot=|ip=|cnet=|video=' | tr -d '\n')
+                nbc=$(grep -wm1 ^'setenv baseconfig' /boot/boot.scr.txt      | sed "s%^setenv baseconfig \+%%g;s% \+% \n%g" | grep -vE 'rootfstype=|root=|nfsroot=|ip=|cnet=|video=' | tr -d '\n')
                 sed -i "0,/^setenv baseconfig.*/s%%setenv baseconfig $pbc$nbc%" /boot/boot.scr.txt
+
+		### keep rootflags= from previous conf
+                pba=$(grep -wm1 'setenv bootargs' /boot/boot.scr.txt.user | sed "s%^setenv bootargs \+%%g;s% \+% \n%g" | grep -E 'rootflags=' | tr -d '\n')
+                nba=$(grep -wm1 'setenv bootargs' /boot/boot.scr.txt      | sed "s%^setenv bootargs \+%%g;s% \+% \n%g" | grep -E 'rootflags=' | tr -d '\n')
+                sed -i "0,/setenv bootargs.*/s%$nba%$pba%g" /boot/boot.scr.txt
 
                 ### keep customcmdline from previous conf
                 ccl=$(grep 'setenv customcmdline' /boot/boot.scr.txt.user)
@@ -127,9 +132,11 @@ if [ $1 == "configure" ]; then
             fi
 
             if [ $XARCH = iMX6 ]; then
-                echo "$ccl" | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
-                echo "$ccl" | grep -q 'mxc_hdmi.enable_3d' || ccl="$ccl mxc_hdmi.enable_3d=enable"
-                echo "$ccl" | grep -q 'vpu352=' || ccl="$ccl vpu352=0"
+                if dpkg --compare-versions "$KVER" lt "5.8"; then
+                    echo "$ccl" | grep -q 'mxc_hdmi.rgb_quant_range' || ccl="$ccl mxc_hdmi.rgb_quant_range=full"
+                    echo "$ccl" | grep -q 'mxc_hdmi.enable_3d' || ccl="$ccl mxc_hdmi.enable_3d=enable"
+                    echo "$ccl" | grep -q 'vpu352=' || ccl="$ccl vpu352=0"
+                fi
                 echo "$ccl" | grep -q 'overclock=' || ccl="$ccl overclock=0"
                 update-rc.d imx6-bluetooth defaults &>/dev/null
             fi
