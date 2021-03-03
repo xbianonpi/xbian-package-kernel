@@ -2,9 +2,12 @@
 case $config_platform_branch in
     imx6*|cb2*)
         tgt='./boot'
+        msk=''
         ;;
     rpi*|rpi2*)
         tgt='./boot-new'
+        msk='bcm27'
+
         ;;
     *)
         exit 0
@@ -12,7 +15,7 @@ case $config_platform_branch in
 esac
 
 mkdir -p $tgt
-cp ../build/$config_platform_branch/working/arch/arm/boot/dts/*.dtb $tgt || :
+cp ../build/$config_platform_branch/working/arch/arm/boot/dts/$msk*.dtb $tgt || :
 
 [ -d ../build/$config_platform_branch/working/arch/arm/boot/dts/overlays ] || exit 0
 mkdir -p $tgt/overlays
