@@ -1,2 +1,2 @@
-etc/default/xbian-rnd
-etc/modprobe.d/zfs.conf
+/etc/default/xbian-rnd
+/etc/modprobe.d/zfs.conf
