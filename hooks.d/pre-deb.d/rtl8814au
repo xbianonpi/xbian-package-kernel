@@ -1,7 +1,7 @@
 
 dest='.rtl8814au'
-repo='https://github.com/aircrack-ng/rtl8814au'
-branch='v5.8.5.1'
+repo='https://github.com/morrownr/8814au'
+branch='main'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
     cd ../build/$config_platform_branch/working
