@@ -10,6 +10,7 @@ XARCH="$(/usr/local/sbin/xbian-arch)"
 case $XARCH in
     RPI)
         [ -e /lib/libarmmem.so ] && { grep -q 'libarmmem.so' /etc/ld.so.preload 2>/dev/null || echo '/lib/libarmmem.so' >> /etc/ld.so.preload; }
+        [ -e /lib/libtcmalloc_minimal.so ] && { grep -q 'libtcmalloc_minimal.so' /etc/ld.so.preload 2>/dev/null || echo '/lib/libtcmalloc_minimal.so' >> /etc/ld.so.preload; }
         [ "$(stat -c %d:%i /)" != "$(stat -c %d:%i /proc/1/root/. 2>/dev/null)" ] && [ -e /etc/ld.so.preload ] && mv /etc/ld.so.preload /etc/ld.so.preload.chroot || :
     ;;
 esac
