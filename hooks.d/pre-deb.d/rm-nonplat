@@ -1,5 +1,8 @@
 
 case $config_platform_branch in
+    rpi-*)
+        find . -name libtcmalloc_minimal.so -delete
+        ;;
     imx6*)
         rm -f content/boot/mks content/boot/boot.scr.txt
         ;;
