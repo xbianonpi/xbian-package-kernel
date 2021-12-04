@@ -6,6 +6,7 @@ pKVER=$(echo $2 | cut -f 1 -d '-')
 fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
 export KVER
 XARCH="$(/usr/local/sbin/xbian-arch)"
+export PATH=/usr/local/sbin:$PATH
 
 case $XARCH in
     RPI|iMX6)
