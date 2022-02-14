@@ -12,6 +12,7 @@ rpi-4.14.y stable rpi-${config_os_version}
 rpi-4.19.y stable rpi-${config_os_version}
 rpi-5.4.y  stable rpi-${config_os_version}
 rpi-5.10.y stable kernel
+rpi-5.15.y stable kernel
 
 rpi2-4.4.y  stable rpi2-jessie
 rpi2-4.6.y  devel rpi2-jessie
@@ -20,5 +21,5 @@ rpi2-4.9.y  stable armv7l-${config_os_version}
 rpi2-4.14.y stable rpi2-${config_os_version}
 rpi2-4.19.y stable rpi2-${config_os_version}
 rpi2-5.4.y  stable kernel
-rpi2-5.10.y stable rpi2-${config_os_version}
-rpi2-5.15.y staging rpi2-${config_os_version}
+rpi2-5.10.y stable kernel
+rpi2-5.15.y stable rpi2-${config_os_version}
