@@ -9,6 +9,10 @@ case $config_platform_branch in
         cp ../build/$config_platform_branch/working/System.map ./boot/System.map
         cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot/zImage
         ;;
+    cb2*)
+        cp ../build/$config_platform_branch/working/System.map ./boot/System.map
+        cp ../build/$config_platform_branch/working/arch/arm/boot/uImage ./boot/uImage
+        ;;
     rpi*)
         cp ../build/$config_platform_branch/working/System.map ./boot-new/System.map-$kver
         cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot-new/kernel.img-$kver
