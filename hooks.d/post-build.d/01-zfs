@@ -11,6 +11,8 @@ esac
 
 set -e
 
+[ ! -e $XBIANROOT/common.functions ] || . $XBIANROOT/common.functions && { [ ! -e ../env ] || rexp ../env; }
+
 if [ -d .zfs ]; then
 
 	[ -e .spl ] && export WITHSPL="--with-spl=$(readlink -f .spl)" || WITHSPL=''
