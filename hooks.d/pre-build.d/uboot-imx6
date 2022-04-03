@@ -8,6 +8,7 @@ case $config_platform_branch in
 esac
 
 needcompile=yes
+export PATH=/usr/bin:$PATH
 
 grep -q 'github.com/xbianonpi/xbian-sources-kernel' .uboot/.git/config || rm -fr .uboot
 
