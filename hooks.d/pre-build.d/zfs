@@ -18,7 +18,7 @@ set -e
 for rr in $dirs; do
 
     [ "$gitbranch" = master ] || gitbranch=$rr-0.7-release
-    giturl="git://github.com/zfsonlinux/$rr.git"
+    giturl="https://github.com/zfsonlinux/$rr.git"
     rr=".$rr"
 
     if [ -d $rr ]; then
