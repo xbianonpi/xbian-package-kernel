@@ -1,8 +1,8 @@
 case $config_platform_branch in
-    imx6-4.6.y)
+    rpi|imx6-4.6.y)
 	exit 0
 	;;
-    imx6*|bpi*|rk*|rpi2*)
+    imx6*|bpi*|rk*|rpi*)
 	;;
     *)
 	exit 0
@@ -10,8 +10,6 @@ case $config_platform_branch in
 esac
 
 set -e
-
-[ ! -e $XBIANROOT/common.functions ] || . $XBIANROOT/common.functions && { [ ! -e ../env ] || rexp ../env; }
 
 if [ -d .zfs ]; then
 

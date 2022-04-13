@@ -3,7 +3,11 @@ case $config_platform_branch in
     rk*|bpi*)
         dirs='spl zfs'
         ;;
-    rpi2*|imx6*)
+    rpi)
+        rm -fr .zfs .spl 2>/dev/null
+        exit 0
+        ;;
+    rpi*|imx6*)
         gitbranch=master
         dirs='zfs'
         ;;

@@ -2,7 +2,7 @@
 
 KVER="__KVER__"
 KVER=$(echo $KVER | tr '~' '-')
-fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
+fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER /boot/kernel8.img-$KVER"
 export KVER
 XARCH="$(/usr/local/sbin/xbian-arch)"
 

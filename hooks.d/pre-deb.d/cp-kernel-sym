@@ -1,5 +1,4 @@
 
-
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 dver=$(cat ../build/$config_platform_branch/config | grep config_deb_version | awk -F'=' '{print $2}')
 kver=$(echo $kver | tr '~' '-')
@@ -15,7 +14,10 @@ case $config_platform_branch in
         ;;
     rpi*)
         cp ../build/$config_platform_branch/working/System.map ./boot-new/System.map-$kver
-        cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot-new/kernel.img-$kver
+        case $ARCH in
+            arm64) gzip -9 -c ../build/$config_platform_branch/working/arch/$ARCH/boot/Image > ./boot-new/kernel8.img-$kver ;;
+            *)     cp ../build/$config_platform_branch/working/arch/arm/boot/zImage ./boot-new/kernel.img-$kver ;;
+        esac
         ;;
     *)
         ;;

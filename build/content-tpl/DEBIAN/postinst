@@ -3,7 +3,7 @@
 KVER="__KVER__"
 KVER=$(echo $KVER | tr '~' '-')
 pKVER=$(echo $2 | cut -f 1 -d '-')
-fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER"
+fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER /boot/kernel8.img-$KVER"
 export KVER
 XARCH="$(/usr/local/sbin/xbian-arch)"
 export PATH=/usr/local/sbin:$PATH
@@ -20,7 +20,8 @@ if [ $1 == "configure" ]; then
 
     case $XARCH in
         RPI)
-            mv /boot-new/kernel.img-$KVER /boot/kernel.img
+            mv /boot-new/kernel.img-$KVER /boot/kernel.img 2>/dev/null || :
+            mv /boot-new/kernel8.img-$KVER /boot/kernel8.img 2>/dev/null || :
             mv /boot-new/System.map-$KVER /boot/
             cp /boot/System.map-$KVER /boot/System.map
             [ -e /boot/overlays ] && rm -fr /boot/overlays

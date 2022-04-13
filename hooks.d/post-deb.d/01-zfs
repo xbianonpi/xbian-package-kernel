@@ -82,6 +82,20 @@ Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
 EOF
         ;;
+                rpi[34]*)
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-zfs-bcm2837
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Pre-Depends: linux-image-bcm2837 (= $dver)
+Maintainer: CurlyMo <development@xbian.org>
+Description: kernel zfs modules ($kver)
+EOF
+        ;;
     *)
         ;;
 esac
