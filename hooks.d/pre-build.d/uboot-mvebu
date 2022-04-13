@@ -8,7 +8,7 @@ case $config_platform_branch in
 esac
 
 needcompile=yes
-export PATH=/usr/bin:$PATH
+export PATH=/opt/cross/bin:$PATH
 
 grep -q 'github.com/xbianonpi/xbian-sources-kernel' .uboot-mvebu/.git/config || rm -fr .uboot-mvebu
 
