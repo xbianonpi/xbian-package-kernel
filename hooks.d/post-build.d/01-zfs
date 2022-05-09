@@ -1,5 +1,5 @@
 case $config_platform_branch in
-    rpi|imx6-4.6.y)
+    rpi|rpi-*|imx6-4.6.y)
 	exit 0
 	;;
     imx6*|bpi*|rk*|rpi*)

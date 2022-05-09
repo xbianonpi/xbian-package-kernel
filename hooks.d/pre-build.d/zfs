@@ -3,7 +3,7 @@ case $config_platform_branch in
     rk*|bpi*)
         dirs='spl zfs'
         ;;
-    rpi)
+    rpi|rpi-*)
         rm -fr .zfs .spl 2>/dev/null
         exit 0
         ;;
