@@ -25,6 +25,7 @@ kvr=${kver%%~*}
 
 case $config_platform_branch in
     imx6*)
+        kpackage=linux-image-armmp
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-headers-armmp
@@ -34,6 +35,7 @@ Priority: optional
 Architecture: armhf
 Multi-Arch: same
 Section: devel
+Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
@@ -42,6 +44,7 @@ Description: kernel headers ($kver)
 EOF
         ;;
     rk*)
+        kpackage=linux-image-${kver%+}-armmp
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-headers-${kver%+}-armmp
@@ -52,7 +55,7 @@ Priority: optional
 Architecture: armhf
 Section: devel
 Multi-Arch: same
-Depends: libc6-dev, make, gcc, linux-image-${kver%+}-armmp (= $dver)
+Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
@@ -61,6 +64,7 @@ Description: kernel headers ($kver)
 EOF
         ;;
     bpi*)
+        kpackage=xbian-package-kernel
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: xbian-package-kernel-headers
@@ -69,7 +73,25 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: libc6-dev, make, gcc, xbian-package-kernel (= $dver)
+Depends: libc6-dev, make, gcc, $kpackage (= $dver)
+Provides: linux-headers, linux-headers-${kvr%+}
+Conflicts: linux-headers, linux-headers-${kvr%+}
+Suggests: dkms
+Maintainer: mk01 <development@xbian.org>
+Description: kernel headers ($kver)
+EOF
+        ;;
+    rpi3*)
+        kpackage=linux-image-bcm2837
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-headers-bcm2837
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: armhf
+Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
@@ -78,6 +100,7 @@ Description: kernel headers ($kver)
 EOF
         ;;
     rpi2*)
+        kpackage=linux-image-bcm2836
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-headers-bcm2836
@@ -86,7 +109,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: libc6-dev, make, gcc, linux-image-bcm2836 (= $dver)
+Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
@@ -95,6 +118,7 @@ Description: kernel headers ($kver)
 EOF
         ;;
     rpi*)
+        kpackage=xbian-package-kernel
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: xbian-package-kernel-headers
@@ -103,7 +127,7 @@ Section: kernel
 Essential: No
 Priority: optional
 Architecture: armhf
-Depends: libc6-dev, make, gcc, xbian-package-kernel (= $dver)
+Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
 Suggests: dkms
