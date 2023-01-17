@@ -158,6 +158,9 @@ if [ $1 == "configure" ]; then
         ;;
     esac
 
+    KVERFULL=$(dpkg -s $DPKG_MAINTSCRIPT_PACKAGE | sed -n 's/^Version: //p' | tr -d '+')
+    echo -e "Package: linux-libc-dev\nPin: version $KVERFULL\nPin-Priority: 1002" > /etc/apt/preferences.d/01xbian-linux-libc-dev
+
     [ -h /lib/modules/$KVER.xbian/build ] && mv /lib/modules/$KVER.xbian/build /lib/modules/$KVER
     [ -d /lib/modules/$KVER.xbian ] && { rm -fr /lib/modules/$KVER.xbian || echo "rm -fr /lib/modules/$KVER.xbian" | at -M now + 2min &>/dev/null; }
     [ -n "$pKVER" ] && [ "$pKVER" != "$KVER" ] && [ -d /lib/modules/$pKVER ] && { rm -fr /lib/modules/$pKVER || echo "rm -fr /lib/modules/$pKVER" | at -M now + 2min &>/dev/null; }
