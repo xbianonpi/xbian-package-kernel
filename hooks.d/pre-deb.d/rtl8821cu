@@ -2,7 +2,7 @@
 dest='.rtl8821cu'
 #repo='https://github.com/brektrou/rtl8821CU'
 #branch='master'
-repo='https://github.com/morrownr/8821cu-20210118'
+repo='https://github.com/morrownr/8821cu-20210916'
 branch='main'
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
