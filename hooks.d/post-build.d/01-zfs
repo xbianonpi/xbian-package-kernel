@@ -21,6 +21,9 @@ if [ -d .zfs ]; then
 		echo "BUILDING $d... Please wait"
 		cd $d; runconfigure=0
 
+		#### tmp fix for Python > 3.9
+		sed -i "s/\-lt 6\]/-lt 1\]/g" config/always-python.m4
+
 		if [ -e ./Makefile ]; then
 			tdir=$(grep abs_builddir Makefile | awk -F'= ' '{print $2}')
 			[ "$tdir" = "$(pwd)" ] || git clean -xdf ./
