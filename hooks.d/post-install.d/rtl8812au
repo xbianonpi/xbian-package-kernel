@@ -1,11 +1,9 @@
 
-dest='.rtl8821au'
-repo='https://github.com/morrownr/8821au-20210708'
+dest='.rtl8812au'
+repo='https://github.com/morrownr/8812au-20210629'
 branch='main'
-kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
-    cd ../build/$config_platform_branch/working
-
     if test -d $dest; then
         cd $dest
         git reset --hard

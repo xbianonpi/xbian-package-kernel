@@ -1,6 +1,7 @@
 .DS_Store
 md5sums
 content/*
+content-zfs/*
 build/*/working*
 build/vexpress
 build.*

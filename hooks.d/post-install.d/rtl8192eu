@@ -2,10 +2,8 @@
 dest='.rtl8192eu'
 repo='https://github.com/Mange/rtl8192eu-linux-driver.git'
 branch='realtek-4.4.x'
-kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
-    cd ../build/$config_platform_branch/working
-
     if test -d $dest; then
         cd $dest
         git reset --hard

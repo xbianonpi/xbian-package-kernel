@@ -1,21 +1,15 @@
 [ -d .zfs ] || exit 0
 
-DEST=$(readlink -f ../../../content/)
+DEST=$(readlink -f ../../../content-zfs/)
+DESTKERN=$(readlink -f ../../../content/)
+
 ARCH=arm
 
 echo "Creating ZFS kernel package."
 
 kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
-dver=$(cat $DEST/DEBIAN/control | grep Version: | awk '{print $2}')
+dver=$(cat $DESTKERN/DEBIAN/control | grep Version: | awk '{print $2}')
 [ -z "$dver" ] && dver=$kver
-
-echo "... cleaning tmp dir"
-( cd $DEST/; rm -fr ./*; mkdir -p DEBIAN; )
-
-echo "... installing kernel modules"
-for d in .spl .zfs; do
-	[ -d $d ] && ( cd $d; eval $config_build_env make install DESTDIR=$DEST >/dev/null 2>&1; )
-done
 
 rm -fr $DEST/usr
 
@@ -156,4 +150,4 @@ EOF
 
 chmod +x $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN/postrm
 
-( cd $DEST/..; $SHELL $XBIANROOT/gen.package; )
+( cd $DEST/..; mv $DESTKERN $DESTKERN.bak; mv $DEST $DESTKERN; $SHELL $XBIANROOT/gen.package || :; mv $DESTKERN $DEST; mv $DESTKERN.bak $DESTKERN; )

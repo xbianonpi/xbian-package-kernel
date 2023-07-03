@@ -2,9 +2,18 @@
 
 KVER="__KVER__"
 KVER=$(echo $KVER | tr '~' '-')
+KVER32=$KVER
+LOCALVERSIONS='-v8 -64'
+for LVER in $LOCALVERSIONS; do
+	if [ -z "${KVER##*$LVER*}" ]; then
+		KVER32="$(echo $KVER | sed "s/$LVER//g")"
+	fi
+done
+
 pKVER=$(echo $2 | cut -f 1 -d '-')
-fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER /boot/kernel8.img-$KVER"
+fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER32 /boot/kernel8.img-$KVER"
 export KVER
+export KVER32
 XARCH="$(/usr/local/sbin/xbian-arch)"
 export PATH=/usr/local/sbin:$PATH
 
@@ -20,7 +29,7 @@ if [ $1 == "configure" ]; then
 
     case $XARCH in
         RPI)
-            mv /boot-new/kernel.img-$KVER /boot/kernel.img 2>/dev/null || :
+            mv /boot-new/kernel.img-$KVER32 /boot/kernel.img 2>/dev/null || :
             mv /boot-new/kernel8.img-$KVER /boot/kernel8.img 2>/dev/null || :
             mv /boot-new/System.map-$KVER /boot/
             cp /boot/System.map-$KVER /boot/System.map
@@ -30,6 +39,7 @@ if [ $1 == "configure" ]; then
             [ -e /boot-new/README.overlays ] && mv /boot-new/README.overlays /boot/ &>/dev/null
             rm -r /boot-new
             depmod -a $KVER
+            depmod -a $KVER32
 
             for f in $fpool; do
                 { [ -f $f.xbian ] && rm $f.xbian; } || true
@@ -169,6 +179,7 @@ if [ $1 == "configure" ]; then
     udevadm control --reload-rules || :
 
     INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d &>/dev/null
+    INITRD=No run-parts --new-session --report -a $KVER32 /etc/kernel/postinst.d &>/dev/null
 
 fi
 

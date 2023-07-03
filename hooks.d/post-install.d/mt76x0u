@@ -8,10 +8,8 @@ fi
 dest='.mt76x0u'
 module='./os/linux/mt7610u_sta.ko'
 repo='https://github.com/xtknight/mt7610u-linksys-ae6000-wifi-fixes'
-kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
-    cd ../build/$config_platform_branch/working
-
     if test -d $dest; then
         cd $dest
         git reset --hard

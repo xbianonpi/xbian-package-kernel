@@ -1,3 +1,4 @@
+cd ../../../content
 
 case $config_platform_branch in
     imx6*|cb2*)
