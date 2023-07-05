@@ -6,3 +6,4 @@ config_deb_depends=xbian-package-firmware (>=2.3.0), rng-tools, xbian-package-in
 config_deb_pkgname=linux-image-bcm2836
 config_deb_ctrlextra=Conflicts: xbian-package-kernel, linux-image-bcm2837
 config_build_targets=zImage modules dtbs
+config_source_reset=yes
