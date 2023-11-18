@@ -32,7 +32,7 @@ Package: linux-headers-armmp
 Version: $dver
 Essential: No
 Priority: optional
-Architecture: armhf
+Architecture: all
 Multi-Arch: same
 Section: devel
 Depends: libc6-dev, make, gcc, $kpackage (= $dver)
@@ -52,7 +52,7 @@ Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: armhf
+Architecture: all
 Section: devel
 Multi-Arch: same
 Depends: libc6-dev, make, gcc, $kpackage (= $dver)
@@ -72,7 +72,7 @@ Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: armhf
+Architecture: all
 Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
@@ -90,7 +90,7 @@ Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: armhf
+Architecture: all
 Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
@@ -108,7 +108,7 @@ Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: armhf
+Architecture: all
 Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
@@ -126,7 +126,7 @@ Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: armhf
+Architecture: all
 Depends: libc6-dev, make, gcc, $kpackage (= $dver)
 Provides: linux-headers, linux-headers-${kvr%+}
 Conflicts: linux-headers, linux-headers-${kvr%+}
@@ -224,7 +224,7 @@ Version: ${kver%+}-${dver##*-}
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: armhf
+Architecture: all
 Multi-Arch: same
 Maintainer: mk01 <development@xbian.org>
 Description: Linux support headers for userspace development ($kver)

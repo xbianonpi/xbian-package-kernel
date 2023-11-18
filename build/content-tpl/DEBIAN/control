@@ -4,8 +4,8 @@ Version: __VERSION__
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: armhf
-Replaces: firmware-misc-nonfree, firmware-brcm80211, bluez-firmware
+Architecture: all
+Replaces: __REPLACES__ firmware-misc-nonfree, firmware-brcm80211, bluez-firmware
 __PKGDEPS__
 __CTRLEXTRA__
 Maintainer: mk01 <development@xbian.org>
