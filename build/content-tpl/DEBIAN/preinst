@@ -7,7 +7,7 @@ export KVER
 XARCH="$(/usr/local/sbin/xbian-arch)"
 
 case $XARCH in
-    iMX6|MVEBU) ! test -e /etc/ld.so.preload || sed -i '/libarmmem.so/d' /etc/ld.so.preload ;;
+    RPI|iMX6|MVEBU) ! test -e /etc/ld.so.preload || sed -i "/libarmmem/d" /etc/ld.so.preload ;;
 esac
 
 if [ $1 == "install" -o $1 == "upgrade" ]; then

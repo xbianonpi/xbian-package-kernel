@@ -4,7 +4,7 @@ Version: __VERSION__
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: all
+Architecture: __ARCHITECTURE__
 Replaces: __REPLACES__ firmware-misc-nonfree, firmware-brcm80211, bluez-firmware
 __PKGDEPS__
 __CTRLEXTRA__

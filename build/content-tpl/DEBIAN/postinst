@@ -19,7 +19,10 @@ export PATH=/usr/local/sbin:$PATH
 
 case $XARCH in
     RPI|iMX6)
-        [ -e /lib/libarmmem.so ] && { grep -q 'libarmmem.so' /etc/ld.so.preload 2>/dev/null || echo '/lib/libarmmem.so' >> /etc/ld.so.preload; }
+        libarmmem=/usr/lib/arm-linux-gnueabihf/libarmmem-v7l.so
+        [ -z "${DPKG_MAINTSCRIPT_PACKAGE##*xbian-package-kernel*}" ] && libarmmem=/usr/lib/arm-linux-gnueabihf/libarmmem-v6l.so
+        [ -z "${DPKG_MAINTSCRIPT_PACKAGE##*linux-image-bcm2837*}" ] && libarmmem=/usr/lib/arm-linux-gnueabihf/libarmmem-v8l.so
+        [ "$(dpkg --print-architecture)" != 'arm64' ] && [ -e "$libarmmem" ] && { grep -q 'libarmmem-v.*l.so' /etc/ld.so.preload 2>/dev/null || echo "$libarmmem" >> /etc/ld.so.preload; }
         grep -q 'libtcmalloc_minimal.so' /etc/ld.so.preload 2>/dev/null && sed -i "/.*libtcmalloc_minimal.so/d" /etc/ld.so.preload
         [ "$(stat -c %d:%i /)" != "$(stat -c %d:%i /proc/1/root/. 2>/dev/null)" ] && [ -e /etc/ld.so.preload ] && mv /etc/ld.so.preload /etc/ld.so.preload.chroot || :
     ;;
