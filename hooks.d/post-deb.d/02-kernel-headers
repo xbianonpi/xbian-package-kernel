@@ -1,5 +1,9 @@
 DEST=$(readlink -f ../../../content/)
-ARCH=arm
+case $ARCH in
+    arm)   DEBARCH=armhf; ARCHDIR=arm-linux-gnueabihf ;;
+    arm64) DEBARCH=arm64; ARCHDIR=aarch64-linux-gnu ;;
+    *)     ARCH=arm; DEBARCH=armhf; ARCHDIR=arm-linux-gnueabihf ;;
+esac
 
 echo "Creating kernel headers package. This may take a while."
 
@@ -214,8 +218,8 @@ mv $DESTHEAD/usr/include $DEST/usr
 rm -fr $DEST/usr/src
 rm -f $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN/postrm
 
-mkdir -p $DEST/usr/include/arm-linux-gnueabihf
-mv $DEST/usr/include/asm $DEST/usr/include/arm-linux-gnueabihf
+mkdir -p $DEST/usr/include/$ARCHDIR
+mv $DEST/usr/include/asm $DEST/usr/include/$ARCHDIR
 
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
@@ -224,7 +228,7 @@ Version: ${kver%+}-${dver##*-}
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: all
+Architecture: $DEBARCH
 Multi-Arch: same
 Maintainer: mk01 <development@xbian.org>
 Description: Linux support headers for userspace development ($kver)

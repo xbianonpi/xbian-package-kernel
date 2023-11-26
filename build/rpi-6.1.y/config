@@ -5,3 +5,4 @@ config_source_branch=rpi-6.1.y
 config_source_addr=https://github.com/xbianonpi/xbian-sources-kernel.git
 config_deb_depends=xbian-package-firmware (>=2.3.0), rng-tools, xbian-package-initramfs-tools (>= 1.3.3)
 config_build_targets=scripts zImage modules dtbs
+config_deb_arch=armhf

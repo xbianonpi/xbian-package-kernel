@@ -7,5 +7,6 @@ config_deb_pkgname=linux-image-bcm2837
 config_deb_ctrlextra=Conflicts: xbian-package-kernel
 config_deb_replaces=linux-image-bcm2836
 config_build_targets=Image modules dtbs
+config_deb_arch=all
 config_deb_contentclean=no
 config_source_reset=yes
