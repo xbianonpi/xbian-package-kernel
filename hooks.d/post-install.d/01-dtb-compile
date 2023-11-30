@@ -7,10 +7,7 @@ case $config_platform_branch in
         ;;
     rpi*)
         tgt='./boot-new'
-        case $ARCH in
-            arm64) msk='broadcom/bcm27' ;;
-            *)     msk='bcm27'; ARCH=arm ;;
-        esac
+        msk='{broadcom/,}bcm27'
         ;;
     *)
         exit 0
@@ -18,7 +15,7 @@ case $config_platform_branch in
 esac
 
 mkdir -p $tgt
-cp ../build/$config_platform_branch/working/arch/$ARCH/boot/dts/$msk*.dtb $tgt || :
+eval cp -v ../build/$config_platform_branch/working/arch/$ARCH/boot/dts/$msk*.dtb $tgt 2>/dev/null || :
 
 [ -d ../build/$config_platform_branch/working/arch/$ARCH/boot/dts/overlays ] || exit 0
 mkdir -p $tgt/overlays
