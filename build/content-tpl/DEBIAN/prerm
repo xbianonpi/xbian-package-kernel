@@ -7,12 +7,13 @@ KVER=$(echo $KVER | tr '~' '-')
 
 if [ $1 = "remove" -o $1 = purge ]; then
 
-    [ -e /boot/kernel.img ] && mv /boot/kernel.img /boot/kernel.img.$KVER.xbian || :
-    [ -e /boot/kernel8.img ] && mv /boot/kernel8.img /boot/kernel8.img.$KVER.xbian || :
+    [ "$DPKG_MAINTSCRIPT_PACKAGE" != 'linux-image-bcm2712' ] && [ -e /boot/kernel.img ] && mv /boot/kernel.img /boot/kernel.img.$KVER.xbian || :
+    [ "$DPKG_MAINTSCRIPT_PACKAGE" != 'linux-image-bcm2712' ] && [ -e /boot/kernel8.img ] && mv /boot/kernel.img /boot/kernel8.img.$KVER.xbian || :
+    [ "$DPKG_MAINTSCRIPT_PACKAGE" = 'linux-image-bcm2712' ] && [ -e /boot/kernel_2712.img ] && mv /boot/kernel_2712.img /boot/kernel_2712.img.$KVER.xbian || :
     [ -d /lib/modules/$KVER ] && mv /lib/modules/$KVER /lib/modules/$KVER.xbian || :
     [ -e /boot/boot.scr.txt ] && cp /boot/boot.scr.txt /boot/boot.scr.txt.xbian || :
 
-    sed -i "/libarmmem/d" /etc/ld.so.preload
+    [ "$DPKG_MAINTSCRIPT_PACKAGE" = 'linux-image-bcm2712' ] || sed -i "/libarmmem/d" /etc/ld.so.preload
 fi
 
 exit 0

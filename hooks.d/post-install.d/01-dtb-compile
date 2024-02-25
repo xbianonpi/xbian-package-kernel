@@ -5,9 +5,17 @@ case $config_platform_branch in
         tgt='./boot'
         msk=''
         ;;
+    rpi5*)
+        tgt='./boot-2712'
+        msk='{broadcom/,}bcm2712'
+        ;;
+    rpi2*|rpi3*)
+        tgt='./boot-new'
+        msk='{broadcom/,}bcm27{09,10,11,12}'
+        ;;
     rpi*)
         tgt='./boot-new'
-        msk='{broadcom/,}bcm27'
+        msk='{broadcom/,}bcm2708'
         ;;
     *)
         exit 0

@@ -1,18 +1,28 @@
 #!/bin/bash
 
 KVER="__KVER__"
-KVER=$(echo $KVER | tr '~' '-')
+KVER=$(echo $KVER | sed 's/16k64/64/g' | tr '~' '-')
 KVER32=$KVER
-LOCALVERSIONS='-v8 -64'
+LOCALVERSIONS='-v8 -64 -16k64'
 for LVER in $LOCALVERSIONS; do
 	if [ -z "${KVER##*$LVER*}" ]; then
 		KVER32="$(echo $KVER | sed "s/$LVER//g")"
 	fi
 done
 
+for BNEW in /boot-2712 /boot-2710 /boot-new; do [ -e "$BNEW" ] && break; done
+
+KVER16K64=$(echo $KVER | sed "s/-64/-16k64/")
+
+if [ -n "$XBIANDEVEL" ]; then
+    echo -e "Package name: $DPKG_MAINTSCRIPT_PACKAGE in $BNEW\nKVER=$KVER, KVER16K64=$KVER16K64, KVER32=$KVER32"
+    echo "Package name: $DPKG_MAINTSCRIPT_PACKAGE"
+fi
+
 pKVER=$(echo $2 | cut -f 1 -d '-')
-fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER32 /boot/kernel8.img-$KVER"
+fpool="/boot/System.map-$KVER /boot/kernel.img-$KVER32 /boot/kernel8.img-$KVER /boot/kernel8.img-$KVER16K64"
 export KVER
+export KVER16K64
 export KVER32
 XARCH="$(/usr/local/sbin/xbian-arch)"
 export PATH=/usr/local/sbin:$PATH
@@ -22,6 +32,7 @@ case $XARCH in
         libarmmem=/usr/lib/arm-linux-gnueabihf/libarmmem-v7l.so
         [ -z "${DPKG_MAINTSCRIPT_PACKAGE##*xbian-package-kernel*}" ] && libarmmem=/usr/lib/arm-linux-gnueabihf/libarmmem-v6l.so
         [ -z "${DPKG_MAINTSCRIPT_PACKAGE##*linux-image-bcm2837*}" ] && libarmmem=/usr/lib/arm-linux-gnueabihf/libarmmem-v8l.so
+        [ -z "${DPKG_MAINTSCRIPT_PACKAGE##*linux-image-bcm2810*}" ] && libarmmem=/usr/lib/arm-linux-gnueabihf/libarmmem-v8l.so
         [ "$(dpkg --print-architecture)" != 'arm64' ] && [ -e "$libarmmem" ] && { grep -q 'libarmmem-v.*l.so' /etc/ld.so.preload 2>/dev/null || echo "$libarmmem" >> /etc/ld.so.preload; }
         grep -q 'libtcmalloc_minimal.so' /etc/ld.so.preload 2>/dev/null && sed -i "/.*libtcmalloc_minimal.so/d" /etc/ld.so.preload
         [ "$(stat -c %d:%i /)" != "$(stat -c %d:%i /proc/1/root/. 2>/dev/null)" ] && [ -e /etc/ld.so.preload ] && mv /etc/ld.so.preload /etc/ld.so.preload.chroot || :
@@ -32,17 +43,19 @@ if [ $1 == "configure" ]; then
 
     case $XARCH in
         RPI)
-            mv /boot-new/kernel.img-$KVER32 /boot/kernel.img 2>/dev/null || :
-            mv /boot-new/kernel8.img-$KVER /boot/kernel8.img 2>/dev/null || :
-            mv /boot-new/System.map-$KVER /boot/
-            cp /boot/System.map-$KVER /boot/System.map
+            mv $BNEW/kernel.img-$KVER32 /boot/kernel.img 2>/dev/null || :
+            mv $BNEW/kernel8.img-$KVER /boot/kernel8.img 2>/dev/null || :
+            mv $BNEW/kernel8.img-$KVER16K64 /boot/kernel_2712.img 2>/dev/null || :
+            cp $BNEW/System.map-* /boot/ 2>/dev/null || :
+            for SM in $KVER16K64 $KVER $KVER32; do cp $BNEW/System.map-$SM /boot/System.map 2>/dev/null && break; done
             [ -e /boot/overlays ] && rm -fr /boot/overlays
-            mv /boot-new/*.dtb /boot/ &>/dev/null
-            mv /boot-new/overlays /boot/ &>/dev/null
-            [ -e /boot-new/README.overlays ] && mv /boot-new/README.overlays /boot/ &>/dev/null
-            rm -r /boot-new
-            depmod -a $KVER
-            depmod -a $KVER32
+            mv $BNEW/*.dtb /boot/ &>/dev/null
+            mv $BNEW/overlays /boot/ &>/dev/null
+            [ -e $BNEW/README.overlays ] && mv $BNEW/README.overlays /boot/ &>/dev/null
+            rm -rf $BNEW
+            depmod -a $KVER 2>/dev/null || :
+            [ "$KVER" = "$KVER16K64" ] || depmod -a $KVER16K64 2>/dev/null || :
+            [ "$KVER" = "$KVER32" ] || depmod -a $KVER32 2>/dev/null || :
 
             for f in $fpool; do
                 { [ -f $f.xbian ] && rm $f.xbian; } || true
@@ -182,7 +195,8 @@ if [ $1 == "configure" ]; then
     udevadm control --reload-rules || :
 
     INITRD=No run-parts --new-session --report -a $KVER /etc/kernel/postinst.d &>/dev/null
-    INITRD=No run-parts --new-session --report -a $KVER32 /etc/kernel/postinst.d &>/dev/null
+    [ "$KVER" = "$KVER16K64" ] || INITRD=No run-parts --new-session --report -a $KVER16K64 /etc/kernel/postinst.d &>/dev/null
+    [ "$KVER" = "$KVER32" ] || INITRD=No run-parts --new-session --report -a $KVER32 /etc/kernel/postinst.d &>/dev/null
 
 fi
 

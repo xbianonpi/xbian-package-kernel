@@ -85,11 +85,29 @@ Maintainer: mk01 <development@xbian.org>
 Description: kernel headers ($kver)
 EOF
         ;;
-    rpi3*)
-        kpackage=linux-image-bcm2837
+    rpi5*)
+        kpackage=linux-image-bcm2712
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
-Package: linux-headers-bcm2837
+Package: linux-headers-bcm2712
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: all
+Depends: libc6-dev, make, gcc, $kpackage (= $dver)
+Provides: linux-headers, linux-headers-${kvr%+}
+Conflicts: linux-headers, linux-headers-${kvr%+}
+Suggests: dkms
+Maintainer: mk01 <development@xbian.org>
+Description: kernel headers ($kver)
+EOF
+        ;;
+    rpi3*)
+        kpackage=linux-image-bcm2710
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-headers-bcm2710
 Version: $dver
 Section: kernel
 Essential: No
@@ -221,6 +239,20 @@ rm -f $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN
 mkdir -p $DEST/usr/include/$ARCHDIR
 mv $DEST/usr/include/asm $DEST/usr/include/$ARCHDIR
 
+if [ "$kver" = "$(echo $dver | tr '~' '-')" ]; then
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: linux-libc-dev
+Version: ${dver}
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: $DEBARCH
+Multi-Arch: same
+Maintainer: mk01 <development@xbian.org>
+Description: Linux support headers for userspace development ($kver)
+EOF
+else
 cat<<EOF>$DEST/DEBIAN/control
 Origin: XBian
 Package: linux-libc-dev
@@ -233,5 +265,6 @@ Multi-Arch: same
 Maintainer: mk01 <development@xbian.org>
 Description: Linux support headers for userspace development ($kver)
 EOF
+fi
 
 ( cd $DEST/..; $SHELL $XBIANROOT/gen.package; )

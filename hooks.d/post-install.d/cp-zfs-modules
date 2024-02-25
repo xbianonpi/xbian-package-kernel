@@ -1,20 +1,26 @@
 
 [ -d .zfs ] || exit 0
 
-export DESTZFS=$(readlink -f ../../../content-zfs/)
+case "$config_deb_pkgname" in
+    linux-image-bcm27*)
+        export DESTZFS=$(readlink -f ../../../content/)
+    ;;
+    *)
+        export DESTZFS=$(readlink -f ../../../content-zfs/)
+        if [ "$config_deb_contentclean" = yes ]; then
+            rm -rf $DESTZFS
+        fi
+        mkdir -p $DESTZFS/DEBIAN
+    ;;
+esac
+
 export INSTALL_MOD_PATH=$DESTZFS
 
 ARCH=arm
 
-if [ "$config_deb_contentclean" = yes ]; then
-    rm -rf $DESTZFS
-fi
-
-mkdir -p $DESTZFS/DEBIAN
-
 echo "Installing ZFS kernel modules."
 
 for d in .spl .zfs; do
-    [ -d $d ] && ( cd $d; eval $config_build_env make install DESTDIR=$DESTZFS >/dev/null 2>&1; )
+    [ -d $d ] && ( cd $d; eval $config_build_env make install DESTDIR=$DESTZFS >/dev/null 2>&1; rm -rf ${DESTZFS}/usr; )
 done
 

@@ -5,7 +5,7 @@ KVER=$(echo $KVER | tr '~' '-')
 
 #if [ $1 == "remove" -o $1 = purge ]; then
 
-rm -f /boot/kernel.img.*.xbian /boot/kernel8.img.*.xbian
+rm -f /boot/kernel.img.*.xbian /boot/kernel8.img.*.xbian /boot/kernel_2712.img.*.xbian
 rm -rf /lib/modules/$KVER.xbian
 
 #fi

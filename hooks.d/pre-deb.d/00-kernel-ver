@@ -3,5 +3,5 @@
 kver=$(cat ../build/$config_platform_branch/config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 dver=$(cat ../build/$config_platform_branch/config | grep config_deb_version | awk -F'=' '{print $2}')
 
-sed -i "s%__KVER__*%$kver%g" DEBIAN/*
+sed -i "s%__KVER__*%$kver%g;s%__VER2710__*%$(echo $kver | sed 's/~16k64/~64/g')%g" DEBIAN/*
 

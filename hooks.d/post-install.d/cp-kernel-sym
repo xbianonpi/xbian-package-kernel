@@ -11,6 +11,13 @@ case $config_platform_branch in
         cp System.map ../../../content/boot/System.map
         cp arch/arm/boot/uImage ../../../content/boot/uImage
         ;;
+    rpi5*)
+        cp System.map ../../../content/boot-2712/System.map-$kver
+        case $ARCH in
+            arm64) gzip -9 -c arch/$ARCH/boot/Image > ../../../content/boot-2712/kernel8.img-$kver ;;
+            *)     cp arch/arm/boot/zImage ../../../content/boot-2712/kernel.img-$kver ;;
+        esac
+        ;;
     rpi*)
         cp System.map ../../../content/boot-new/System.map-$kver
         case $ARCH in

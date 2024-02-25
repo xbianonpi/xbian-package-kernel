@@ -1,0 +1,85 @@
+
+DEST=$(readlink -f ../../../content/)
+
+case "$config_deb_pkgname" in
+    linux-image-bcm2709)
+        ktrans=linux-image-bcm2836
+    ;;
+    linux-image-bcm2710)
+        ktrans=linux-image-bcm2837
+    ;;
+    *) exit 0
+esac	
+
+echo "Creating transitional kernel package for $config_deb_pkgname."
+
+kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+[ -z "$dver" ] && dver=$kver
+
+rm -fr $DEST/usr
+
+eval export $config_build_env 2>/dev/null && eval export $config_build_env
+
+echo "... creating kernel package"
+cat<<EOF>$DEST/DEBIAN/control
+Origin: XBian
+Package: $ktrans
+Version: $dver
+Section: kernel
+Essential: No
+Priority: optional
+Architecture: $ARCH
+Depends: $config_deb_pkgname (= $dver)
+Maintainer: mkreisl <development@xbian.org>
+Description: Transitional package for $config_deb_pkgname ($kver)
+EOF
+
+kver=$(echo $kver | tr '~' '-')
+
+cat<<EOF>$DEST/DEBIAN/postinst
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "configure" ]; then
+	:
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/postrm
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "purge" -o \$1 = "remove" ]; then
+	:
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/preinst
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "install" -o \$1 = "upgrade" ]; then
+	:
+fi
+EOF
+
+cat<<EOF>$DEST/DEBIAN/prerm
+#!/bin/bash
+
+kver=$kver
+
+if [ \$1 = "remove" -o \$1 = "purge" ]; then
+	:
+fi
+
+if [ \$1 = "upgrade" ]; then
+	:
+fi
+EOF
+
+chmod +x $DEST/DEBIAN/prerm $DEST/DEBIAN/preinst $DEST/DEBIAN/postinst $DEST/DEBIAN/postrm
+
+( cd $DEST/..; $SHELL $XBIANROOT/gen.package; )

@@ -1,5 +1,11 @@
 [ -d .zfs ] || exit 0
 
+case "$config_deb_pkgname" in
+    linux-image-bcm27*)
+        exit 0
+    ;;
+esac
+
 DEST=$(readlink -f ../../../content-zfs/)
 DESTKERN=$(readlink -f ../../../content/)
 
@@ -70,7 +76,7 @@ Version: $dver
 Section: kernel
 Essential: No
 Priority: optional
-Architecture: all
+Architecture: armhf
 Pre-Depends: linux-image-bcm2836 (= $dver)
 Maintainer: CurlyMo <development@xbian.org>
 Description: kernel zfs modules ($kver)
