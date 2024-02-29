@@ -1,0 +1,13 @@
+config_source_configure=
+config_build_env=schroot -c amd64${config_os_version} -p --
+config_source_branch=rpi-6.6.y
+config_source_addr=https://github.com/xbianonpi/xbian-sources-kernel.git
+config_deb_depends=xbian-package-firmware (>=11.0), rng-tools, xbian-package-initramfs-tools (>=20240201)
+config_deb_pkgname=linux-image-bcm2710
+config_deb_ctrlextra=Conflicts: xbian-package-kernel
+config_deb_replaces=linux-image-bcm2836, linux-image-bcm2837, linux-image-bcm2712
+config_build_targets=Image modules dtbs
+config_deb_arch=all
+config_distro=yes
+config_deb_contentclean=no
+config_source_reset=yes
