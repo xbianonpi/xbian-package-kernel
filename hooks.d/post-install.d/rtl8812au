@@ -1,6 +1,6 @@
 
 dest='.rtl8812au'
-repo='https://github.com/morrownr/8812au-20210629'
+repo='https://github.com/morrownr/8812au-20210820'
 branch='main'
 kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
 (
