@@ -57,7 +57,7 @@ if [ -d .zfs ]; then
 
 			#### tmp fix for cross build
 			sed -i 's/as_fn_error $? "cannot run test program while cross compiling/echo $? "cannot run test program while cross compiling/g' ./configure
-			eval $config_build_env ./configure $extraprm --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) $WITHSPL
+			eval $config_build_env ./configure $extraprm --enable-linux-experimental --with-config=kernel --with-systemdunitdir=/lib/systemd/system --with-systemdpresetdir=/lib/systemd/system-preset --localstatedir=/var --sysconfdir=/etc --prefix=/usr --with-linux=$(readlink -f ../) --with-linux-obj=$(readlink -f ../) $WITHSPL
 		fi
 
 		eval $config_build_env make gitrev || :
