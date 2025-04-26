@@ -15,6 +15,7 @@ rpi-5.10.y stable kernel
 rpi-5.15.y stable kernel
 rpi-6.1.y  stable kernel
 rpi-6.6.y  stable kernel
+rpi-6.12.y stable kernel
 
 rpi2-4.4.y  stable rpi2-jessie
 rpi2-4.6.y  devel rpi2-jessie
@@ -30,3 +31,5 @@ rpi2-6.1.y  stable rpi2-${config_os_version}
 rpi3-6.1.y  stable rpi2-${config_os_version}
 rpi3-6.6.y  stable rpi2-${config_os_version}
 rpi5-6.6.y  stable rpi2-${config_os_version}
+rpi3-6.12.y stable rpi2-${config_os_version}
+rpi5-6.12.y stable rpi2-${config_os_version}
