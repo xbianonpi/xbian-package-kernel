@@ -1,3 +1,8 @@
+if [ "$(find -name rtw88_8812au.ko | wc -l)" -gt 0 ]; then
+        echo "Notice: rtl8812au has been replaced by mainstream driver"
+        echo "        and therefore it will not be built anymore"
+        exit 0
+fi
 
 dest='.rtl8812au'
 repo='https://github.com/morrownr/8812au-20210820'
