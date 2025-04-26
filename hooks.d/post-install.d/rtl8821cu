@@ -1,7 +1,10 @@
+if [ "$(find -name rtw88_8821cu.ko | wc -l)" -gt 0 ]; then
+        echo "Notice: rtl8821cu has been replaced by mainstream driver"
+        echo "        and therefore it will not be built anymore"
+        exit 0
+fi
 
 dest='.rtl8821cu'
-#repo='https://github.com/brektrou/rtl8821CU'
-#branch='master'
 repo='https://github.com/morrownr/8821cu-20210916'
 branch='main'
 kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
