@@ -1,8 +1,18 @@
+if [ "$(find -name rtw88_8814au.ko | wc -l)" -gt 0 ]; then
+        echo "Notice: rtl8814au has been replaced by mainstream driver"
+        echo "        and therefore it will not be built anymore"
+        exit 0
+fi
 
 dest='.rtl8814au'
 repo='https://github.com/morrownr/8814au'
 branch='main'
 kver=$(cat ../config_pkgver | grep config_deb_version | awk -F'=' '{print $2}')
+if dpkg --compare-versions "$kver" ge "6.15"; then
+        echo "Notice: rtl8814au is not longer maintained for kernel version"
+        echo "        above 6.14 and therefore it will not be built anymore"
+        exit 0
+fi
 (
     if test -d $dest; then
         cd $dest
